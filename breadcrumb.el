@@ -3,7 +3,7 @@
 ;; Copyright (C) 2023  João Távora
 
 ;; Author: João Távora <joaotavora@gmail.com>
-;; Version: 0.0.2alpha
+;; Version: 0.0.3beta
 ;; Keywords:
 
 ;; This program is free software; you can redistribute it and/or modify
@@ -35,9 +35,12 @@
 ;;;
 ;;; To use this library:
 ;;;
-;;; * M-x breadcrumb-headerline-mode.  A buffer-local minor-mode which
+;;; * M-x breadcrumb-local-mode.  A buffer-local minor-mode which
 ;;;   puts Project and Imenu-derived breadcrumbs derived in the header
 ;;;   line automatically.
+;;;
+;;; * M-x breadcrumb-mode.  A global version of the above.  Will try
+;;;   to turn itself on conservatively and only if there's a project.
 ;;;
 ;;; * Manually put the mode-line constructs
 ;;;
@@ -74,7 +77,7 @@
 ;;;
 ;;; This _should_ be faster than which-func.el due some caching
 ;;; strategies.  One of these strategies occurs in `bc--ipath-alist',
-;;; which takes care not to over-call `imenu-make-index-alist', which
+;;; which takes care not to over-call `imenu--make-index-alist', which
 ;;; could be slow (in fact very slow if an external process needs to
 ;;; be contacted).  The variable `breadcrumb-idle-delay' controls
 ;;; that.  Another cache occurs in `bc--ipath-plain-cache' second is
@@ -88,17 +91,15 @@
 ;;;
 ;;;; Todo:
 ;;;
-;;; Cache the project breadcrumb info buffer-locally
-;;; Make breadcrumb-mode a global mode
-;;; Make breadcrumb-local-mode a local alternative
-;;; Breadcrumb should not affect headerline if neither project OR imenu are present
+;;; Make more clicky buttons in the headerline to do whatever
+;;;
 
 ;;; Code:
 (require 'cl-lib)
 (require 'imenu)
 (require 'project)
 
-(cl-defun bc-bisect (a x &key (from 0) (to (length a)) key from-end)
+(cl-defun bc--bisect (a x &key (from 0) (to (length a)) key from-end)
   "Compute index to insert X in sequence A, keeping it sorted.
 If X already in A, the resulting index is the leftmost such
 index, unless FROM-END is t.  KEY is as usual in other CL land."
@@ -144,7 +145,7 @@ These structures don't have a `breadcrumb-region' property on."
       (mapc #'dfs index-alist)
       (setq bc--ipath-plain-cache (cl-sort bc--ipath-plain-cache #'< :key #'car)))
     (unless (< pos (car (aref bc--ipath-plain-cache 0)))
-      (let ((res (bc-bisect bc--ipath-plain-cache pos :key #'car :from-end t)))
+      (let ((res (bc--bisect bc--ipath-plain-cache pos :key #'car :from-end t)))
         (unless (zerop res) (reverse (cdr (elt bc--ipath-plain-cache (1- res)))))))))
 
 (defun bc-ipath (index-alist pos)
@@ -195,9 +196,13 @@ These structures don't have a `breadcrumb-region' property on."
                    (setq bc--last-update-tick (buffer-chars-modified-tick))
                    (let ((non-essential t)
                          (imenu-auto-rescan t))
-                     (imenu--make-index-alist t)
+                     (ignore-errors
+                       (imenu--make-index-alist t))
                      (setq bc--ipath-plain-cache nil)
-                     (force-mode-line-update t))))))))
+                     ;; no point is taxing the mode-line machinery now
+                     ;; if the buffer isn't showing anywhere.
+                     (when (get-buffer-window buf t)
+                       (force-mode-line-update t)))))))))
     imenu--index-alist))
 
 (defgroup breadcrumb nil
@@ -217,13 +222,15 @@ These structures don't have a `breadcrumb-region' property on."
 (defcustom bc-imenu-crumb-separator " > "
   "Separator for `breadcrumb-project-crumbs'." :type 'string)
 
+;;;###autoload
 (defun bc-imenu-crumbs ()
-  (bc--summarize
-   (cl-loop with alist = (bc--ipath-alist)
-            for p in (bc-ipath alist (point))
-            collect (bc--format-node p))
-   bc-imenu-max-length
-   bc-imenu-crumb-separator))
+  "Describe point inside the Imenu tree of current file."
+  (when-let ((alist (bc--ipath-alist)))
+    (bc--summarize
+     (cl-loop for p in (bc-ipath alist (point))
+              collect (bc--format-node p))
+     bc-imenu-max-length
+     bc-imenu-crumb-separator)))
 
 (defun bc--summarize (crumbs cutoff separator)
   (let ((rcrumbs
@@ -238,16 +245,23 @@ These structures don't have a `breadcrumb-region' property on."
              collect toadd)))
     (string-join (reverse rcrumbs) separator)))
 
+(defvar-local bc--cached-project-crumbs nil)
+
+;;;###autoload
 (cl-defun bc-project-crumbs ()
-  (let ((p (project-current)))
-    (unless p (cl-return-from bc-project-crumbs (buffer-name)))
-    (bc--summarize
-     (cons (propertize (project-name p) 'bc-dont-shorten t)
-           (split-string
-            (file-relative-name (buffer-file-name) (project-root p))
-            "/"))
-     bc-project-max-length
-     bc-project-crumb-separator)))
+  "Describing the current file inside project."
+  (or bc--cached-project-crumbs
+      (setq bc--cached-project-crumbs
+            (when-let ((p (project-current)))
+              (bc--summarize
+               (cons (propertize (project-name p) 'bc-dont-shorten t)
+                     (split-string
+                      (file-relative-name (or (buffer-file-name)
+                                              default-directory)
+                                          (project-root p))
+                      "/"))
+               bc-project-max-length
+               bc-project-crumb-separator)))))
 
 (defun bc--header-line ()
   "Helper for bc-headerline-mode"
@@ -256,12 +270,24 @@ These structures don't have a `breadcrumb-region' property on."
                                   '(bc-project-crumbs bc-imenu-crumbs)))))
     (mapconcat #'identity x " : ")))
 
-(define-minor-mode bc-headerline-mode
+;;;###autoload
+(define-minor-mode bc-local-mode
   "Header lines with breadcrumbs."
   :init-value nil
-  (if bc-headerline-mode (add-to-list 'header-line-format '(:eval (bc--header-line)))
+ (if bc-local-mode (add-to-list 'header-line-format '(:eval (bc--header-line)))
     (setq header-line-format (delete '(:eval (bc--header-line)) header-line-format))))
 
+(defun bc--turn-on-local-mode-on-behalf-of-global-mode ()
+  (unless (or (minibufferp)
+              (not (buffer-file-name))
+              (null (bc-project-crumbs)))
+    (bc-local-mode 1)))
+
+;;;###autoload
+(define-globalized-minor-mode bc-mode bc-local-mode
+  bc--turn-on-local-mode-on-behalf-of-global-mode)
+
+;;;###autoload
 (defun bc-jump ()
   "Like M-x `imenu', but breadcrumb-powered."
   (interactive)
