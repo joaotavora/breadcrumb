@@ -86,6 +86,12 @@
 ;;; name, these aren't really internal symbols (the much older
 ;;; which-func.el library makes liberal use of them, for example).
 ;;;
+;;;; Todo:
+;;;
+;;; Cache the project breadcrumb info buffer-locally
+;;; Make breadcrumb-mode a global mode
+;;; Make breadcrumb-local-mode a local alternative
+;;; Breadcrumb should not affect headerline if neither project OR imenu are present
 
 ;;; Code:
 (require 'cl-lib)
