@@ -128,7 +128,7 @@ node."
     (nreverse (search index-alist))))
 
 (defvar-local bc--ipath-plain-cache nil
-  "A cache for `bc--ipath-plain'")
+  "A cache for `breadcrumb--ipath-plain'.")
 
 (defun bc--ipath-plain (index-alist pos)
   "Compute ipath for plain `imenu--index-alist' structures.
@@ -174,10 +174,10 @@ These structures don't have a `breadcrumb-region' property on."
   "Control idle time before requesting new breadcrumbs.")
 
 (defvar-local bc--idle-timer nil
-  "Timer used by `bc--ipath-alist'.")
+  "Timer used by `breadcrumb--ipath-alist'.")
 
 (defvar-local bc--last-update-tick 0
-  "Last time `bc--ipath-alist' asked for an update.")
+  "Last time `breadcrumb--ipath-alist' asked for an update.")
 
 (defun bc--ipath-alist ()
   "Return `imenu--index-alist', maybe arrange for its update."
@@ -263,7 +263,7 @@ These structures don't have a `breadcrumb-region' property on."
                bc-project-crumb-separator)))))
 
 (defun bc--header-line ()
-  "Helper for bc-headerline-mode"
+  "Helper for `breadcrumb-headerline-mode'."
   (let ((x (cl-remove-if
             #'seq-empty-p (mapcar #'funcall
                                   '(bc-project-crumbs bc-imenu-crumbs)))))
@@ -305,7 +305,7 @@ These structures don't have a `breadcrumb-region' property on."
             do (dfs (cdr n) newpath))))
       (imenu--make-index-alist)
       (dfs imenu--index-alist)
-      (unless cands (user-error "Sorry, no breadcrumb items to jump to."))
+      (unless cands (user-error "Sorry, no breadcrumb items to jump to"))
       (setq choice (cdr (assoc (completing-read "Index item? " cands nil t)
                                cands #'string=)))
       (push-mark)
