@@ -288,7 +288,7 @@ These structures don't have a `breadcrumb-region' property on."
 
 ;;;###autoload
 (defun bc-jump ()
-  "Like M-x `imenu', but breadcrumb-powered."
+  "Like \\[execute-extended-command] `imenu', but breadcrumb-powered."
   (interactive)
   (let (cands choice)
     (cl-labels
