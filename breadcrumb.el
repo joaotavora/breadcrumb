@@ -1,4 +1,4 @@
-;;; breadcrumb.el --- imenu-based breadcrumb paths   -*- lexical-binding: t; -*-
+;;; breadcrumb.el --- project and imenu-based breadcrumb paths   -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2023  João Távora
 
@@ -35,12 +35,11 @@
 ;;;
 ;;; To use this library:
 ;;;
-;;; * M-x breadcrumb-local-mode.  A buffer-local minor-mode which
-;;;   puts Project and Imenu-derived breadcrumbs derived in the header
-;;;   line automatically.
-;;;
-;;; * M-x breadcrumb-mode.  A global version of the above.  Will try
-;;;   to turn itself on conservatively and only if there's a project.
+;;; * `M-x breadcrumb-mode` is a global mode.  Will try to turn itself
+;;;   on conservatively and only if there's a project.
+
+;;; * `M-x breadcrumb-local-mode` is a buffer-local minor mode, if you
+;;;    don't want the default heuristics for turning it on everywhere.
 ;;;
 ;;; * Manually put the mode-line constructs
 ;;;
@@ -50,7 +49,7 @@
 ;;;
 ;;;     (:eval (breadcrumb-project-crumbs))
 ;;;
-;;;  in your seettings of the `mode-line-format' or
+;;;  in your settings of the `mode-line-format' or
 ;;;  `header-line-format' variables.
 ;;;
 ;;; The shape and size of each breadcrumb groups may be tweaked via
