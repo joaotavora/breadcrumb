@@ -222,7 +222,7 @@ These structures don't have a `breadcrumb-region' property on."
   "Separator for `breadcrumb-project-crumbs'." :type 'string)
 
 ;;;###autoload
-(defun bc-imenu-crumbs ()
+(defun breadcrumb-imenu-crumbs ()
   "Describe point inside the Imenu tree of current file."
   (when-let ((alist (bc--ipath-alist)))
     (bc--summarize
@@ -247,7 +247,7 @@ These structures don't have a `breadcrumb-region' property on."
 (defvar-local bc--cached-project-crumbs nil)
 
 ;;;###autoload
-(cl-defun bc-project-crumbs ()
+(cl-defun breadcrumb-project-crumbs ()
   "Describing the current file inside project."
   (or bc--cached-project-crumbs
       (setq bc--cached-project-crumbs
@@ -270,7 +270,7 @@ These structures don't have a `breadcrumb-region' property on."
     (mapconcat #'identity x " : ")))
 
 ;;;###autoload
-(define-minor-mode bc-local-mode
+(define-minor-mode breadcrumb-local-mode
   "Header lines with breadcrumbs."
   :init-value nil
  (if bc-local-mode (add-to-list 'header-line-format '(:eval (bc--header-line)))
@@ -283,11 +283,11 @@ These structures don't have a `breadcrumb-region' property on."
     (bc-local-mode 1)))
 
 ;;;###autoload
-(define-globalized-minor-mode bc-mode bc-local-mode
+(define-globalized-minor-mode breadcrumb-mode bc-local-mode
   bc--turn-on-local-mode-on-behalf-of-global-mode)
 
 ;;;###autoload
-(defun bc-jump ()
+(defun breadcrumb-jump ()
   "Like \\[execute-extended-command] `imenu', but breadcrumb-powered."
   (interactive)
   (let (cands choice)
