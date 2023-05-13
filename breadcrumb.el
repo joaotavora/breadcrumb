@@ -210,13 +210,13 @@ These structures don't have a `breadcrumb-region' property on."
   :group 'convenience)
 
 (defcustom bc-project-max-length 40
-  "Soft cutoff for `breadcrumb-project-crumbs'." :type 'fixnum)
+  "Soft cutoff for `breadcrumb-project-crumbs'." :type 'natnum)
 
 (defcustom bc-project-crumb-separator "/"
   "Separator for `breadcrumb-project-crumbs'." :type 'string)
 
 (defcustom bc-imenu-max-length 40
-  "Soft cutoff for `breadcrumb-imenu-crumbs'." :type 'fixnum)
+  "Soft cutoff for `breadcrumb-imenu-crumbs'." :type 'natnum)
 
 (defcustom bc-imenu-crumb-separator " > "
   "Separator for `breadcrumb-project-crumbs'." :type 'string)
