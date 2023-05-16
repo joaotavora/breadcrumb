@@ -162,11 +162,13 @@ These structures don't have a `breadcrumb-region' property on."
                     'mouse-face 'header-line-highlight
                     'help-echo "Go here"
                     'keymap (let ((m (make-sparse-keymap)))
-                              (define-key m bc--header-line-key
-                                          (lambda (&rest _e)
-                                            (interactive)
-                                            (push-mark)
-                                            (goto-char (car reg))))
+                              (define-key
+                               m bc--header-line-key
+                               (lambda (&rest _e)
+                                 (interactive "@")
+                                 (with-current-buffer (window-buffer)
+                                   (push-mark)
+                                   (goto-char (car reg)))))
                               m))
       p)))
 
