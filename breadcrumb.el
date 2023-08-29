@@ -123,7 +123,11 @@ node."
           for n in nodes
           for reg = (get-text-property 0 'breadcrumb-region (car n))
           when (<= (car reg) pos (cdr reg))
-          return (search (cdr n) (cons (car n) ipath))
+          return (search (cdr n) (cons
+                                  (propertize (car n)
+                                              'breadcrumb-siblings nodes
+                                              'breadcrumb-parent (car ipath))
+                                  ipath))
           finally (cl-return ipath))))
     (nreverse (search index-alist))))
 
@@ -133,15 +137,16 @@ node."
 (defun bc--ipath-plain (index-alist pos)
   "Compute ipath for plain `imenu--index-alist' structures.
 These structures don't have a `breadcrumb-region' property on."
-  (cl-labels ((dfs (n &optional ipath)
+  (cl-labels ((dfs (n &optional ipath siblings)
                 (setq ipath (cons (car n) ipath))
                 (if (consp (cdr n))
-                    (mapc (lambda (n) (dfs n ipath)) (cdr n))
+                    (mapc (lambda (n2) (dfs n2 ipath (cdr n))) (cdr n))
+                  (put-text-property 0 1 'breadcrumb-siblings (cdr siblings) (car ipath))
                   (setq bc--ipath-plain-cache
                         (vconcat bc--ipath-plain-cache
                                  `[,(cons (cdr n) ipath)])))))
     (unless bc--ipath-plain-cache
-      (mapc #'dfs index-alist)
+      (mapc (lambda (i) (dfs i nil index-alist)) index-alist)
       (setq bc--ipath-plain-cache (cl-sort bc--ipath-plain-cache #'< :key #'car)))
     (unless (< pos (car (aref bc--ipath-plain-cache 0)))
       (let ((res (bc--bisect bc--ipath-plain-cache pos :key #'car :from-end t)))
@@ -155,22 +160,49 @@ These structures don't have a `breadcrumb-region' property on."
 
 (defvar bc--header-line-key [header-line mouse-1])
 
+(require 'pulse)
+(defun bc--goto (window pos)
+  (with-selected-window window
+    (with-current-buffer (window-buffer)
+      (push-mark)
+      (goto-char pos)
+      (let ((pulse-delay 0.05) (pulse-flag t))
+        (pulse-momentary-highlight-region (line-beginning-position) (line-end-position))))))
+
 (defun bc--format-node (p)
-  (let ((reg (get-text-property 0 'breadcrumb-region p)))
-    (if reg
-        (propertize p
-                    'mouse-face 'header-line-highlight
-                    'help-echo "Go here"
-                    'keymap (let ((m (make-sparse-keymap)))
-                              (define-key
-                               m bc--header-line-key
-                               (lambda (&rest _e)
-                                 (interactive "@")
-                                 (with-current-buffer (window-buffer)
-                                   (push-mark)
-                                   (goto-char (car reg)))))
-                              m))
-      p)))
+  (let ((window (selected-window)))
+    (propertize
+     p 'mouse-face 'header-line-highlight
+     'help-echo "mouse-1: Go places"
+     'keymap
+     (let ((m (make-sparse-keymap)))
+       (define-key
+        m bc--header-line-key
+        (lambda (&rest event)
+          (interactive)
+          (if-let* ((siblings (get-text-property 0 'breadcrumb-siblings p))
+                    (sel (car
+                          (x-popup-menu
+                           ;; FIXME: For some reason, event `_e' is
+                           ;; nil here, prolly the headerlines breaks
+                           ;; it.
+                           (or event `((0 0) ,window))
+                           `(keymap
+                             "Go to:"
+                             ,@(cl-loop
+                                for o in siblings
+                                for (name . pos) = o
+                                when (and (stringp name)
+                                          (or (get-text-property 0 'breadcrumb-region name)
+                                              (number-or-marker-p pos)))
+                                collect
+                                `(,name menu-item ,name (keymap ,name)))))))
+                    (pos (or
+                          (car (get-text-property 0 'breadcrumb-region sel))
+                          (alist-get sel siblings))))
+              (bc--goto window pos)
+            (user-error "Can't navigate to siblings of `%s'" p))))
+       m))))
 
 (defvar bc-idle-time 1
   "Control idle time before requesting new breadcrumbs.")
@@ -254,16 +286,17 @@ These structures don't have a `breadcrumb-region' property on."
   "Describing the current file inside project."
   (or bc--cached-project-crumbs
       (setq bc--cached-project-crumbs
-            (when-let ((p (project-current)))
-              (bc--summarize
-               (cons (propertize (project-name p) 'bc-dont-shorten t)
-                     (split-string
-                      (file-relative-name (or (buffer-file-name)
-                                              default-directory)
-                                          (project-root p))
-                      "/"))
-               bc-project-max-length
-               bc-project-crumb-separator)))))
+            (bc--summarize
+             (if-let ((p (project-current)))
+                 (cons (propertize (project-name p) 'bc-dont-shorten t)
+                       (split-string
+                        (file-relative-name (or (buffer-file-name)
+                                                default-directory)
+                                            (project-root p))
+                        "/"))
+               (list (buffer-name)))
+             bc-project-max-length
+             bc-project-crumb-separator))))
 
 (defun bc--header-line ()
   "Helper for `breadcrumb-headerline-mode'."
@@ -312,7 +345,7 @@ These structures don't have a `breadcrumb-region' property on."
       (setq choice (cdr (assoc (completing-read "Index item? " cands nil t)
                                cands #'string=)))
       (push-mark)
-      (goto-char choice))))
+      (bc--goto (selected-window) choice))))
 
 (provide 'breadcrumb)
 ;;; breadcrumb.el ends here
