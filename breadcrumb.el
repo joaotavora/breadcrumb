@@ -227,11 +227,12 @@ These structures don't have a `breadcrumb-region' property on."
 (defun breadcrumb-imenu-crumbs ()
   "Describe point inside the Imenu tree of current file."
   (when-let ((alist (bc--ipath-alist)))
-    (bc--summarize
-     (cl-loop for p in (bc-ipath alist (point))
-              collect (bc--format-node p))
-     bc-imenu-max-length
-     bc-imenu-crumb-separator)))
+    (when (cl-some #'identity alist)
+      (bc--summarize
+       (cl-loop for p in (bc-ipath alist (point))
+                collect (bc--format-node p))
+       bc-imenu-max-length
+       bc-imenu-crumb-separator))))
 
 (defun bc--summarize (crumbs cutoff separator)
   (let ((rcrumbs
