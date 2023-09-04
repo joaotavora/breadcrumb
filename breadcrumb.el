@@ -158,7 +158,9 @@ These structures don't have a `breadcrumb-region' property on."
       (bc--ipath-rich index-alist pos)
     (bc--ipath-plain index-alist pos)))
 
+;; FIXME: Why do I need to put these in special variables?
 (defvar bc--header-line-key [header-line mouse-1])
+(defvar bc--mode-line-key [mode-line mouse-1])
 
 (require 'pulse)
 (defun bc--goto (window pos)
@@ -168,41 +170,6 @@ These structures don't have a `breadcrumb-region' property on."
       (goto-char pos)
       (let ((pulse-delay 0.05) (pulse-flag t))
         (pulse-momentary-highlight-region (line-beginning-position) (line-end-position))))))
-
-(defun bc--format-ipath-node (p)
-  (let ((window (selected-window)))
-    (propertize
-     p 'mouse-face 'header-line-highlight
-     'help-echo "mouse-1: Go places"
-     'keymap
-     (let ((m (make-sparse-keymap)))
-       (define-key
-        m bc--header-line-key
-        (lambda (&rest event)
-          (interactive)
-          (if-let* ((siblings (get-text-property 0 'breadcrumb-siblings p))
-                    (sel (car
-                          (x-popup-menu
-                           ;; FIXME: For some reason, event `_e' is
-                           ;; nil here, prolly the headerlines breaks
-                           ;; it.
-                           (or event `((0 0) ,window))
-                           `(keymap
-                             "Go to:"
-                             ,@(cl-loop
-                                for o in siblings
-                                for (name . pos) = o
-                                when (and (stringp name)
-                                          (or (get-text-property 0 'breadcrumb-region name)
-                                              (number-or-marker-p pos)))
-                                collect
-                                `(,name menu-item ,name (keymap ,name)))))))
-                    (pos (or
-                          (car (get-text-property 0 'breadcrumb-region sel))
-                          (alist-get sel siblings))))
-              (bc--goto window pos)
-            (user-error "Can't navigate to siblings of `%s'" p))))
-       m))))
 
 (defvar bc-idle-time 1
   "Control idle time before requesting new breadcrumbs.")
@@ -274,6 +241,25 @@ These structures don't have a `breadcrumb-region' property on."
 (defface bc-project-leaf-face '((t (:inherit (mode-line-buffer-id))))
   "Face for the project leaf crumb in breadcrumb project path.")
 
+
+(defun bc--format-ipath-node (p more)
+  (let* ((l (lambda (&rest _event)
+              (interactive)
+              ;; FIXME: This is a bit inadequate if the user is
+              ;; clicking the mode or header lines, but 'event' seems
+              ;; to be missing in these cases.
+              (breadcrumb-jump))))
+    (propertize
+     p 'mouse-face 'header-line-highlight
+     'face (if more 'bc-imenu-crumbs-face 'bc-imenu-leaf-face)
+     'bc-dont-shorten (null more)
+     'help-echo "mouse-1: Go places"
+     'keymap
+     (let ((m (make-sparse-keymap)))
+       (define-key m bc--header-line-key l)
+       (define-key m bc--mode-line-key l)
+       m))))
+
 ;;;###autoload
 (defun breadcrumb-imenu-crumbs ()
   "Describe point inside the Imenu tree of current file."
@@ -281,10 +267,7 @@ These structures don't have a `breadcrumb-region' property on."
     (when (cl-some #'identity alist)
       (bc--summarize
        (cl-loop for (p . more) on (bc-ipath alist (point))
-                for p2 = (propertize p 'face (if more
-                                                 'bc-imenu-crumbs-face
-                                               'bc-imenu-leaf-face))
-                collect (bc--format-ipath-node p2))
+                collect (bc--format-ipath-node p more))
        bc-imenu-max-length
        bc-imenu-crumb-separator))))
 
@@ -309,30 +292,47 @@ Join the crumbs with SEPARATOR."
 
 (defvar-local bc--cached-project-crumbs nil)
 
+(defun bc--format-project-node (p more root upto)
+  (let ((l (lambda (&rest _event)
+             (interactive)
+             (find-file (file-name-directory (expand-file-name upto root))))))
+    (propertize p 'face
+                (if more 'bc-project-crumbs-face 'bc-project-leaf-face)
+                'bc-dont-shorten (null more)
+                'mouse-face 'header-line-highlight
+                'help-echo (format "mouse-1: Go places nearby %s -> %s" root upto)
+                'keymap
+                (let ((m (make-sparse-keymap)))
+                  (define-key m bc--header-line-key l)
+                  (define-key m bc--mode-line-key l)
+                  m))))
+
+(defun bc--project-crumbs-1 (bfn)
+  (cl-loop with project = (project-current)
+           with root = (if project (project-root project) default-directory)
+           with relname = (file-relative-name (or bfn default-directory)
+                                              root)
+           for (s . more) on (split-string relname "/")
+           concat s into upto
+           when more concat "/" into upto
+           collect (bc--format-project-node s more root upto) into retval
+           finally
+           (cl-return
+            (if project
+                (cons (propertize (project-name project)
+                                  'bc-dont-shorten t
+                                  'face 'bc-project-base-face)
+                      retval)
+              retval))))
+
 ;;;###autoload
 (cl-defun breadcrumb-project-crumbs ()
   "Describing the current file inside project."
   (or bc--cached-project-crumbs
       (setq bc--cached-project-crumbs
             (bc--summarize
-             (if-let ((p (and buffer-file-name
-                              (project-current))))
-                 (cons (propertize (project-name p)
-                                   'bc-dont-shorten t
-                                   'face 'bc-project-base-face)
-                       (cl-loop
-                        for (s . more) on
-                        (split-string
-                         (file-relative-name (or (buffer-file-name)
-                                                 default-directory)
-                                             (project-root p))
-                         "/")
-                        for s2 = (propertize s 'face
-                                            (if more 'bc-project-crumbs-face
-                                              'bc-project-leaf-face)
-                                            'bc-dont-shorten (null more))
-                        collect s2))
-               (list (buffer-name)))
+             (if buffer-file-name (bc--project-crumbs-1 buffer-file-name)
+               (list (propertize (buffer-name) 'face 'bc-project-leaf-face)))
              bc-project-max-length
              (propertize bc-project-crumb-separator
                          'face 'bc-project-crumbs-face)))))
