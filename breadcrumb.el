@@ -285,14 +285,14 @@ Aim for a return string that is at most CUTOFF characters long.
 Join the crumbs with SEPARATOR."
   (let ((rcrumbs
          (cl-loop
-             for available = (- cutoff used)
-             for (c . more) on (reverse crumbs)
-             for seplen = (if more (length separator) 0)
-             for shorten-p = (unless (get-text-property 0 'bc-dont-shorten c)
-                               (> (+ (length c) seplen) available))
-             for toadd = (if shorten-p (substring c 0 1) c)
-             sum (+ (length toadd) seplen) into used
-             collect toadd)))
+          for available = (- cutoff used)
+          for (c . more) on (reverse crumbs)
+          for seplen = (if more (length separator) 0)
+          for shorten-p = (unless (get-text-property 0 'bc-dont-shorten c)
+                            (> (+ (length c) seplen) available))
+          for toadd = (if shorten-p (substring c 0 1) c)
+          sum (+ (length toadd) seplen) into used
+          collect toadd)))
     (string-join (reverse rcrumbs) separator)))
 
 (defun bc--format-project-node (p more root path)
@@ -358,7 +358,7 @@ propertized crumbs."
 (define-minor-mode breadcrumb-local-mode
   "Header lines with breadcrumbs."
   :init-value nil
- (if bc-local-mode (add-to-list 'header-line-format '(:eval (bc--header-line)))
+  (if bc-local-mode (add-to-list 'header-line-format '(:eval (bc--header-line)))
     (setq header-line-format (delete '(:eval (bc--header-line)) header-line-format))))
 
 (defun bc--turn-on-local-mode-on-behalf-of-global-mode ()
