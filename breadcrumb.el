@@ -107,14 +107,22 @@
   :prefix "breadcrumb-"
   :group 'convenience)
 
-(defcustom bc-project-max-length 40
-  "Soft cutoff for `breadcrumb-project-crumbs'." :type 'natnum)
+(defcustom bc-project-max-length 0.3
+  "Soft cutoff for `breadcrumb-project-crumbs'.
+If a fixnum, it's a absolute number of characters.  If a float, a
+percentage of `window-width'."
+  :type '(choice (natnum :tag "Number of characters")
+                 (float  :tag "Percent of window's width")))
 
 (defcustom bc-project-crumb-separator "/"
   "Separator for `breadcrumb-project-crumbs'." :type 'string)
 
-(defcustom bc-imenu-max-length 40
-  "Soft cutoff for `breadcrumb-imenu-crumbs'." :type 'natnum)
+(defcustom bc-imenu-max-length 0.3
+  "Soft cutoff for `breadcrumb-imenu-crumbs'.
+If a fixnum, it's a absolute number of characters.  If a float, a
+percentage of `window-width'."
+  :type '(choice (natnum :tag "Number of characters")
+                 (float  :tag "Percent of window's width")))
 
 (defcustom bc-imenu-crumb-separator " > "
   "Separator for `breadcrumb-project-crumbs'." :type 'string)
@@ -243,6 +251,11 @@ These structures don't have a `breadcrumb-region' property on."
 (defvar bc--header-line-key [header-line mouse-1])
 (defvar bc--mode-line-key [mode-line mouse-1])
 
+(defun bc--length (len)
+  "Interpret LEN using `window-width' and return a number."
+  (cond ((floatp len) (* (window-width) len))
+        (t len)))
+
 (defun bc--format-ipath-node (p more)
   (let* ((l (lambda (&rest _event)
               (interactive)
@@ -272,7 +285,7 @@ These structures don't have a `breadcrumb-region' property on."
        (cl-loop
         for (p . more) on (bc-ipath alist (point))
         collect (bc--format-ipath-node p more))
-       bc-imenu-max-length
+       (bc--length bc-imenu-max-length)
        (propertize bc-imenu-crumb-separator
                    'face 'bc-face)))))
 
@@ -343,7 +356,7 @@ propertized crumbs."
   (bc--summarize
    (if buffer-file-name (bc--project-crumbs-1 buffer-file-name)
      (list (propertize (buffer-name) 'face 'bc-project-leaf-face)))
-   bc-project-max-length
+   (bc--length bc-project-max-length)
    (propertize bc-project-crumb-separator
                'face 'bc-project-crumbs-face)))
 
