@@ -169,7 +169,7 @@ These structures don't have a `breadcrumb-region' property on."
       (let ((pulse-delay 0.05) (pulse-flag t))
         (pulse-momentary-highlight-region (line-beginning-position) (line-end-position))))))
 
-(defun bc--format-node (p)
+(defun bc--format-ipath-node (p)
   (let ((window (selected-window)))
     (propertize
      p 'mouse-face 'header-line-highlight
@@ -255,18 +255,46 @@ These structures don't have a `breadcrumb-region' property on."
 (defcustom bc-imenu-crumb-separator " > "
   "Separator for `breadcrumb-project-crumbs'." :type 'string)
 
+(defface bc-face '((t (:inherit shadow)))
+  "Base face for all breadcrumb things.")
+
+(defface bc-imenu-crumbs-face '((t (:inherit bc-face)))
+  "Face for imenu crumbs in the breadcrumb imenu path.")
+
+(defface bc-imenu-leaf-face '((t (:inherit (font-lock-function-name-face
+                                            bc-imenu-crumbs-face))))
+  "Face for imenu leaf crumbs in the breadcrumb imenu path.")
+
+(defface bc-project-crumbs-face '((t (:inherit bc-face)))
+  "Face for project crumbs in the breadcrumb project path.")
+
+(defface bc-project-base-face '((t (:inherit bc-project-crumbs-face)))
+  "Face for project base in the breadcrumb project path.")
+
+(defface bc-project-leaf-face '((t (:inherit (mode-line-buffer-id))))
+  "Face for the project leaf crumb in breadcrumb project path.")
+
 ;;;###autoload
 (defun breadcrumb-imenu-crumbs ()
   "Describe point inside the Imenu tree of current file."
   (when-let ((alist (bc--ipath-alist)))
     (when (cl-some #'identity alist)
       (bc--summarize
-       (cl-loop for p in (bc-ipath alist (point))
-                collect (bc--format-node p))
+       (cl-loop for (p . more) on (bc-ipath alist (point))
+                for p2 = (propertize p 'face (if more
+                                                 'bc-imenu-crumbs-face
+                                               'bc-imenu-leaf-face))
+                collect (bc--format-ipath-node p2))
        bc-imenu-max-length
        bc-imenu-crumb-separator))))
 
 (defun bc--summarize (crumbs cutoff separator)
+  "Return a string that summarizes CRUMBS, a list of strings.
+\"Summarization\" consists of truncating some CRUMBS to 1
+character.  Rightmost members of CRUMBS are summarized last.
+Members with a `breadcrumb-dont-shorten' are never truncated.
+Aim for a return string that is at most CUTOFF characters long.
+Join the crumbs with SEPARATOR."
   (let ((rcrumbs
          (cl-loop
              for available = (- cutoff used)
@@ -287,23 +315,34 @@ These structures don't have a `breadcrumb-region' property on."
   (or bc--cached-project-crumbs
       (setq bc--cached-project-crumbs
             (bc--summarize
-             (if-let ((p (project-current)))
-                 (cons (propertize (project-name p) 'bc-dont-shorten t)
-                       (split-string
-                        (file-relative-name (or (buffer-file-name)
-                                                default-directory)
-                                            (project-root p))
-                        "/"))
+             (if-let ((p (and buffer-file-name
+                              (project-current))))
+                 (cons (propertize (project-name p)
+                                   'bc-dont-shorten t
+                                   'face 'bc-project-base-face)
+                       (cl-loop
+                        for (s . more) on
+                        (split-string
+                         (file-relative-name (or (buffer-file-name)
+                                                 default-directory)
+                                             (project-root p))
+                         "/")
+                        for s2 = (propertize s 'face
+                                            (if more 'bc-project-crumbs-face
+                                              'bc-project-leaf-face)
+                                            'bc-dont-shorten (null more))
+                        collect s2))
                (list (buffer-name)))
              bc-project-max-length
-             bc-project-crumb-separator))))
+             (propertize bc-project-crumb-separator
+                         'face 'bc-project-crumbs-face)))))
 
 (defun bc--header-line ()
   "Helper for `breadcrumb-headerline-mode'."
   (let ((x (cl-remove-if
             #'seq-empty-p (mapcar #'funcall
                                   '(bc-project-crumbs bc-imenu-crumbs)))))
-    (mapconcat #'identity x " : ")))
+    (mapconcat #'identity x (propertize " : " 'face 'bc-face))))
 
 ;;;###autoload
 (define-minor-mode breadcrumb-local-mode
