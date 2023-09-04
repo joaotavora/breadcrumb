@@ -256,7 +256,7 @@ These structures don't have a `breadcrumb-region' property on."
      p 'mouse-face 'header-line-highlight
      'face (if more 'bc-imenu-crumbs-face 'bc-imenu-leaf-face)
      'bc-dont-shorten (null more)
-     'help-echo (format "mouse-1: Go places near %p" p)
+     'help-echo (format "mouse-1: Go places near %s" p)
      'keymap
      (let ((m (make-sparse-keymap)))
        (define-key m bc--header-line-key l)
