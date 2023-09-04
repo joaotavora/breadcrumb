@@ -1,9 +1,10 @@
 ;;; breadcrumb.el --- project and imenu-based breadcrumb paths   -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2023  João Távora
+;; Copyright (C) 2023  Free Software Foundation, Inc.
 
 ;; Author: João Távora <joaotavora@gmail.com>
-;; Version: 0.0.3beta
+;; Package-Requires: ((emacs "28.1") (project "0.9.8"))
+;; Version: 1.0.0
 ;; Keywords:
 
 ;; This program is free software; you can redistribute it and/or modify
@@ -98,6 +99,48 @@
 (require 'imenu)
 (require 'project)
 
+
+;;; Customization options
+
+(defgroup breadcrumb nil
+  "One-liner indication of where you are in the maze."
+  :prefix "breadcrumb-"
+  :group 'convenience)
+
+(defcustom bc-project-max-length 40
+  "Soft cutoff for `breadcrumb-project-crumbs'." :type 'natnum)
+
+(defcustom bc-project-crumb-separator "/"
+  "Separator for `breadcrumb-project-crumbs'." :type 'string)
+
+(defcustom bc-imenu-max-length 40
+  "Soft cutoff for `breadcrumb-imenu-crumbs'." :type 'natnum)
+
+(defcustom bc-imenu-crumb-separator " > "
+  "Separator for `breadcrumb-project-crumbs'." :type 'string)
+
+(defface bc-face '((t (:inherit shadow)))
+  "Base face for all breadcrumb things.")
+
+(defface bc-imenu-crumbs-face '((t (:inherit bc-face)))
+  "Face for imenu crumbs in the breadcrumb imenu path.")
+
+(defface bc-imenu-leaf-face '((t (:inherit (font-lock-function-name-face
+                                            bc-imenu-crumbs-face))))
+  "Face for imenu leaf crumbs in the breadcrumb imenu path.")
+
+(defface bc-project-crumbs-face '((t (:inherit bc-face)))
+  "Face for project crumbs in the breadcrumb project path.")
+
+(defface bc-project-base-face '((t (:inherit bc-project-crumbs-face)))
+  "Face for project base in the breadcrumb project path.")
+
+(defface bc-project-leaf-face '((t (:inherit (mode-line-buffer-id))))
+  "Face for the project leaf crumb in breadcrumb project path.")
+
+
+;;; "ipath" management logic and imenu interoperation
+;;;
 (cl-defun bc--bisect (a x &key (from 0) (to (length a)) key from-end)
   "Compute index to insert X in sequence A, keeping it sorted.
 If X already in A, the resulting index is the leftmost such
@@ -158,19 +201,6 @@ These structures don't have a `breadcrumb-region' property on."
       (bc--ipath-rich index-alist pos)
     (bc--ipath-plain index-alist pos)))
 
-;; FIXME: Why do I need to put these in special variables?
-(defvar bc--header-line-key [header-line mouse-1])
-(defvar bc--mode-line-key [mode-line mouse-1])
-
-(require 'pulse)
-(defun bc--goto (window pos)
-  (with-selected-window window
-    (with-current-buffer (window-buffer)
-      (push-mark)
-      (goto-char pos)
-      (let ((pulse-delay 0.05) (pulse-flag t))
-        (pulse-momentary-highlight-region (line-beginning-position) (line-end-position))))))
-
 (defvar bc-idle-time 1
   "Control idle time before requesting new breadcrumbs.")
 
@@ -205,55 +235,28 @@ These structures don't have a `breadcrumb-region' property on."
                        (force-mode-line-update t)))))))))
     imenu--index-alist))
 
-(defgroup breadcrumb nil
-  "One-liner indication of where you are in the maze."
-  :prefix "breadcrumb-"
-  :group 'convenience)
+
+;;; Higher-level functions
 
-(defcustom bc-project-max-length 40
-  "Soft cutoff for `breadcrumb-project-crumbs'." :type 'natnum)
-
-(defcustom bc-project-crumb-separator "/"
-  "Separator for `breadcrumb-project-crumbs'." :type 'string)
-
-(defcustom bc-imenu-max-length 40
-  "Soft cutoff for `breadcrumb-imenu-crumbs'." :type 'natnum)
-
-(defcustom bc-imenu-crumb-separator " > "
-  "Separator for `breadcrumb-project-crumbs'." :type 'string)
-
-(defface bc-face '((t (:inherit shadow)))
-  "Base face for all breadcrumb things.")
-
-(defface bc-imenu-crumbs-face '((t (:inherit bc-face)))
-  "Face for imenu crumbs in the breadcrumb imenu path.")
-
-(defface bc-imenu-leaf-face '((t (:inherit (font-lock-function-name-face
-                                            bc-imenu-crumbs-face))))
-  "Face for imenu leaf crumbs in the breadcrumb imenu path.")
-
-(defface bc-project-crumbs-face '((t (:inherit bc-face)))
-  "Face for project crumbs in the breadcrumb project path.")
-
-(defface bc-project-base-face '((t (:inherit bc-project-crumbs-face)))
-  "Face for project base in the breadcrumb project path.")
-
-(defface bc-project-leaf-face '((t (:inherit (mode-line-buffer-id))))
-  "Face for the project leaf crumb in breadcrumb project path.")
-
+;; FIXME: Why do I need to put these key definitiosn in special
+;; variables?
+(defvar bc--header-line-key [header-line mouse-1])
+(defvar bc--mode-line-key [mode-line mouse-1])
 
 (defun bc--format-ipath-node (p more)
   (let* ((l (lambda (&rest _event)
               (interactive)
-              ;; FIXME: This is a bit inadequate if the user is
+              ;; TODO: This is a bit inadequate if the user is
               ;; clicking the mode or header lines, but 'event' seems
-              ;; to be missing in these cases.
+              ;; to be missing in these cases.  We would to
+              ;; conveniently visit places near the node `p' via the
+              ;; mouse
               (breadcrumb-jump))))
     (propertize
      p 'mouse-face 'header-line-highlight
      'face (if more 'bc-imenu-crumbs-face 'bc-imenu-leaf-face)
      'bc-dont-shorten (null more)
-     'help-echo "mouse-1: Go places"
+     'help-echo (format "mouse-1: Go places near %p" p)
      'keymap
      (let ((m (make-sparse-keymap)))
        (define-key m bc--header-line-key l)
@@ -266,10 +269,12 @@ These structures don't have a `breadcrumb-region' property on."
   (when-let ((alist (bc--ipath-alist)))
     (when (cl-some #'identity alist)
       (bc--summarize
-       (cl-loop for (p . more) on (bc-ipath alist (point))
-                collect (bc--format-ipath-node p more))
+       (cl-loop
+        for (p . more) on (bc-ipath alist (point))
+        collect (bc--format-ipath-node p more))
        bc-imenu-max-length
-       bc-imenu-crumb-separator))))
+       (propertize bc-imenu-crumb-separator
+                   'face 'bc-face)))))
 
 (defun bc--summarize (crumbs cutoff separator)
   "Return a string that summarizes CRUMBS, a list of strings.
@@ -290,17 +295,20 @@ Join the crumbs with SEPARATOR."
              collect toadd)))
     (string-join (reverse rcrumbs) separator)))
 
-(defvar-local bc--cached-project-crumbs nil)
-
-(defun bc--format-project-node (p more root upto)
+(defun bc--format-project-node (p more root path)
+  "Helper for `bc--project-crumbs-1'.
+Formats path crumb P given optional MORE nodes.  ROOT is the
+default directory of P's project.  PATH is the path of P relative
+to ROOT."
   (let ((l (lambda (&rest _event)
              (interactive)
-             (find-file (file-name-directory (expand-file-name upto root))))))
+             ;; TODO: See similar TODO in `bc--format-ipath-node'.
+             (find-file (file-name-directory (expand-file-name path root))))))
     (propertize p 'face
                 (if more 'bc-project-crumbs-face 'bc-project-leaf-face)
                 'bc-dont-shorten (null more)
                 'mouse-face 'header-line-highlight
-                'help-echo (format "mouse-1: Go places nearby %s -> %s" root upto)
+                'help-echo (format "mouse-1: Go places near %s/%s" root path)
                 'keymap
                 (let ((m (make-sparse-keymap)))
                   (define-key m bc--header-line-key l)
@@ -308,34 +316,36 @@ Join the crumbs with SEPARATOR."
                   m))))
 
 (defun bc--project-crumbs-1 (bfn)
-  (cl-loop with project = (project-current)
-           with root = (if project (project-root project) default-directory)
-           with relname = (file-relative-name (or bfn default-directory)
-                                              root)
-           for (s . more) on (split-string relname "/")
-           concat s into upto
-           when more concat "/" into upto
-           collect (bc--format-project-node s more root upto) into retval
-           finally
-           (cl-return
-            (if project
-                (cons (propertize (project-name project)
-                                  'bc-dont-shorten t
-                                  'face 'bc-project-base-face)
-                      retval)
-              retval))))
+  "Helper for `breadcrumb-project-crumbs'.
+Given BFN, the `buffer-file-name', produce a a list of
+propertized crumbs."
+  (cl-loop
+   with project = (project-current)
+   with root = (if project (project-root project) default-directory)
+   with relname = (file-relative-name (or bfn default-directory)
+                                      root)
+   for (s . more) on (split-string relname "/")
+   concat s into upto
+   when more concat "/" into upto
+   collect (bc--format-project-node s more root upto) into retval
+   finally
+   (cl-return
+    (if project
+        (cons (propertize (project-name project)
+                          'bc-dont-shorten t
+                          'face 'bc-project-base-face)
+              retval)
+      retval))))
 
 ;;;###autoload
 (cl-defun breadcrumb-project-crumbs ()
   "Describing the current file inside project."
-  (or bc--cached-project-crumbs
-      (setq bc--cached-project-crumbs
-            (bc--summarize
-             (if buffer-file-name (bc--project-crumbs-1 buffer-file-name)
-               (list (propertize (buffer-name) 'face 'bc-project-leaf-face)))
-             bc-project-max-length
-             (propertize bc-project-crumb-separator
-                         'face 'bc-project-crumbs-face)))))
+  (bc--summarize
+   (if buffer-file-name (bc--project-crumbs-1 buffer-file-name)
+     (list (propertize (buffer-name) 'face 'bc-project-leaf-face)))
+   bc-project-max-length
+   (propertize bc-project-crumb-separator
+               'face 'bc-project-crumbs-face)))
 
 (defun bc--header-line ()
   "Helper for `breadcrumb-headerline-mode'."
@@ -360,6 +370,16 @@ Join the crumbs with SEPARATOR."
 ;;;###autoload
 (define-globalized-minor-mode breadcrumb-mode bc-local-mode
   bc--turn-on-local-mode-on-behalf-of-global-mode)
+
+(require 'pulse)
+(defun bc--goto (window pos)
+  "Helper for `breadcrumb-jump'."
+  (with-selected-window window
+    (with-current-buffer (window-buffer)
+      (push-mark)
+      (goto-char pos)
+      (let ((pulse-delay 0.05) (pulse-flag t))
+        (pulse-momentary-highlight-region (line-beginning-position) (line-end-position))))))
 
 ;;;###autoload
 (defun breadcrumb-jump ()
