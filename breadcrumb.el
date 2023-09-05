@@ -343,8 +343,8 @@ propertized crumbs."
    collect (bc--format-project-node s more root upto) into retval
    finally
    (cl-return
-    (if project
-        (cons (propertize (project-name project)
+    (if root
+        (cons (propertize (file-name-base (directory-file-name root))
                           'bc-dont-shorten t
                           'face 'bc-project-base-face)
               retval)
