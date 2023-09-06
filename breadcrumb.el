@@ -4,7 +4,7 @@
 
 ;; Author: João Távora <joaotavora@gmail.com>
 ;; Package-Requires: ((emacs "28.1") (project "0.9.8"))
-;; Version: 1.0.0
+;; Version: 1.0.1
 ;; Keywords:
 
 ;; This program is free software; you can redistribute it and/or modify
