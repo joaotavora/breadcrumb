@@ -196,7 +196,15 @@ These structures don't have a `breadcrumb-region' property on."
                   (put-text-property 0 1 'breadcrumb-siblings (cdr siblings) (car ipath))
                   (setq bc--ipath-plain-cache
                         (vconcat bc--ipath-plain-cache
-                                 `[,(cons (cdr n) ipath)])))))
+                                 `[,(cons
+                                     ;; See github#17 and docstring of
+                                     ;; `imenu--index-alist' for the
+                                     ;; "overlay" edge case.
+                                     (cl-etypecase (cdr n)
+                                       (number (cdr n))
+                                       (marker (cdr n))
+                                       (overlay (overlay-start (cdr n))))
+                                     ipath)])))))
     (unless bc--ipath-plain-cache
       (mapc (lambda (i) (dfs i nil index-alist)) index-alist)
       (setq bc--ipath-plain-cache (cl-sort bc--ipath-plain-cache #'< :key #'car)))
