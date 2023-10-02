@@ -58,6 +58,9 @@
 ;; `breadcrumb-imenu-crumb-separator', and
 ;; `breadcrumb-project-crumb-separator'.
 ;;
+;; A custom string can be prepended to the the breadcrumbs of each
+;; buffer by setting `breadcrumb-prepend'.
+;;
 ;; The structure each the breadcrumbs varies depending on whether
 ;; either project.el and imenu.el (or both) can do useful things for
 ;; your buffer.
@@ -127,6 +130,10 @@ percentage of `window-width'."
 
 (defcustom bc-imenu-crumb-separator " > "
   "Separator for `breadcrumb-project-crumbs'." :type 'string)
+
+(defcustom bc-prepend ""
+  "String that is prepended to the the breadcrumbs of each buffer."
+  :type 'string)
 
 (defface bc-face '((t (:inherit shadow)))
   "Base face for all breadcrumb things.")
@@ -375,7 +382,8 @@ propertized crumbs."
   (let ((x (cl-remove-if
             #'seq-empty-p (mapcar #'funcall
                                   '(bc-project-crumbs bc-imenu-crumbs)))))
-    (mapconcat #'identity x (propertize " : " 'face 'bc-face))))
+    (concat breadcrumb-prepend
+      (mapconcat #'identity x (propertize " : " 'face 'bc-face)))))
 
 ;;;###autoload
 (define-minor-mode breadcrumb-local-mode

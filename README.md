@@ -46,6 +46,11 @@ The shape and size of each breadcrumb groups may be tweaked via
 `breadcrumb-imenu-crumb-separator`, and
 `breadcrumb-project-crumb-separator`.
 
+You can also prepend a string to each buffer's breadcrumbs by setting
+`breadcrumb-prepend`. This is useful, for example, to line up the
+breadcrumbs with your code if you're using line numbers, or to just
+give the breadcrumbs a little bit of indentation.
+
 The structure each of the breadcrumbs varies depending on whether
 either `project.el` and `imenu.el` (or both) can do useful things for
 your buffer.
