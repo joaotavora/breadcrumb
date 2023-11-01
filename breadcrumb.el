@@ -354,7 +354,7 @@ propertized crumbs."
    finally
    (cl-return
     (if root
-        (cons (propertize (file-name-base (directory-file-name root))
+        (cons (propertize (file-name-nondirectory (directory-file-name root))
                           'bc-dont-shorten t
                           'face 'bc-project-base-face)
               retval)
