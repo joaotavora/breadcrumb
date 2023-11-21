@@ -1,3 +1,4 @@
+[![GNU ELPA](https://elpa.gnu.org/packages/breadcrumb.svg)](https://elpa.gnu.org/packages/breadcrumb.html)
 # M-x breadcrumb-mode
 
 ![screenshot](./screenshot.png)
@@ -19,7 +20,10 @@ and `project.el` for the best information.
 
 ## Installation
 
-For now, just download the `breadcrumb.el` file and load it somehow.
+You can download breadcrumb via GNU Elpa with `M-x package-install RET breadcrumb RET`
+
+Or if you'd like to install it manually you can download `breadcrumb.el` and put it in 
+your `load-path` similar to `(add-to-list 'load-path "~/path/to/breadcrumb.el")`
 
 ## More usage
 
