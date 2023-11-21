@@ -1,3 +1,4 @@
+[![GNU ELPA](https://elpa.gnu.org/packages/breadcrumb.svg)](https://elpa.gnu.org/packages/breadcrumb.html)
 # M-x breadcrumb-mode
 
 ![screenshot](./screenshot.png)
