@@ -437,9 +437,10 @@ propertized crumbs."
 
 (provide 'breadcrumb)
 ;;;###autoload (register-definition-prefixes "breadcrumb" '("breadcrumb-"))
-;;; breadcrumb.el ends here
 
 ;; Local Variables:
 ;; read-symbol-shorthands: (("bc-" . "breadcrumb-"))
 ;; autoload-compute-prefixes: nil
 ;; End:
+
+;;; breadcrumb.el ends here
