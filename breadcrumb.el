@@ -436,8 +436,11 @@ propertized crumbs."
       (bc--goto (selected-window) choice))))
 
 (provide 'breadcrumb)
-;;; breadcrumb.el ends here
+;;;###autoload (register-definition-prefixes "breadcrumb" '("breadcrumb-"))
 
 ;; Local Variables:
 ;; read-symbol-shorthands: (("bc-" . "breadcrumb-"))
+;; autoload-compute-prefixes: nil
 ;; End:
+
+;;; breadcrumb.el ends here
