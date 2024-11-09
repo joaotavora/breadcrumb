@@ -344,12 +344,35 @@ to ROOT."
                   (define-key m bc--mode-line-key l)
                   m))))
 
+(defvar bc--project-root-cache (make-hash-table :test 'equal)
+  "Cache of `project-root' for all buffers used with breadcrumbs.
+The cache is a map from buffer to list.  The list consists of a single element
+as the project root.  If the project root is nil, then the first element of the
+list is also nil.")
+
+(defun bc--project-current (bfn)
+  "Return the cached or calculated value of `project-root' for BFN.
+This function is a helper for `bc--project-crumbs-1'.  If the project root for
+BFN was not previosuly in the cache, then this function will insert the value of
+`prpkect-root' for BFN."
+  (let* ((name bfn)
+         (maybe-cached-value (gethash name bc--project-root-cache))
+         (cached-value (if maybe-cached-value
+                           maybe-cached-value
+                         (let ((project (project-current)))
+                           (puthash name (cons project nil) bc--project-root-cache)))))
+    (car cached-value)))
+
+(defun bc--project-root-cache-remove ()
+  "Invalidate the entry in the `bc--project-root-cache' for the current buffer."
+  (remhash (buffer-file-name) bc--project-root-cache))
+
 (defun bc--project-crumbs-1 (bfn)
   "Helper for `breadcrumb-project-crumbs'.
 Given BFN, the `buffer-file-name', produce a a list of
 propertized crumbs."
   (cl-loop
-   with project = (project-current)
+   with project = (bc--project-current bfn)
    with root = (if project (project-root project) default-directory)
    with relname = (file-relative-name (or bfn default-directory)
                                       root)
@@ -387,7 +410,10 @@ propertized crumbs."
 (define-minor-mode breadcrumb-local-mode
   "Header lines with breadcrumbs."
   :init-value nil
-  (if bc-local-mode (add-to-list 'header-line-format '(:eval (bc--header-line)))
+  (if bc-local-mode (progn
+                      (add-to-list 'header-line-format '(:eval (bc--header-line)))
+                      (add-hook 'kill-buffer-hook #'bc--project-root-cache-remove 0 t)
+                      (add-hook 'after-revert-hook #'bc--project-root-cache-remove 0 t))
     (setq header-line-format (delete '(:eval (bc--header-line)) header-line-format))))
 
 (defun bc--turn-on-local-mode-on-behalf-of-global-mode ()
