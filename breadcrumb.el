@@ -307,11 +307,11 @@ These structures don't have a `breadcrumb-region' property on."
 
 (defun bc--summarize (crumbs cutoff separator)
   "Return a string that summarizes CRUMBS, a list of strings.
-\"Summarization\" consists of truncating some CRUMBS to 1
-character.  Rightmost members of CRUMBS are summarized last.
-Members with a `breadcrumb-dont-shorten' are never truncated.
-Aim for a return string that is at most CUTOFF characters long.
-Join the crumbs with SEPARATOR."
+\"Summarization\" consists of truncating some CRUMBS to 1 character.
+Rightmost members of CRUMBS are summarized last.  Members with a non-nil
+`breadcrumb-dont-shorten' property are never truncated.  Aim for a
+return string that is at most CUTOFF characters long.  Join the crumbs
+with SEPARATOR."
   (let ((rcrumbs
          (cl-loop
           for available = (- cutoff used)
