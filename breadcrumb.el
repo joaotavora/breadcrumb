@@ -371,7 +371,9 @@ propertized crumbs."
   "Describing the current file inside project."
   (bc--summarize
    (if buffer-file-name (bc--project-crumbs-1 buffer-file-name)
-     (list (propertize (buffer-name) 'face 'bc-project-leaf-face)))
+     (list (propertize (buffer-name)
+                       'face 'bc-project-leaf-face
+                       'bc-dont-shorten t)))
    (bc--length bc-project-max-length)
    (propertize bc-project-crumb-separator
                'face 'bc-project-crumbs-face)))
