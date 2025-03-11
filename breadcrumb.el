@@ -317,6 +317,7 @@ with SEPARATOR."
           for available = (- cutoff used)
           for (c . more) on (reverse crumbs)
           for seplen = (if more (length separator) 0)
+          when (and c (> (length c) 0))
           for shorten-p = (unless (get-text-property 0 'bc-dont-shorten c)
                             (> (+ (length c) seplen) available))
           for toadd = (if shorten-p (substring c 0 1) c)
