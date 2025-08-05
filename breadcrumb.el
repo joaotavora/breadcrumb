@@ -344,13 +344,15 @@ to ROOT."
                   (define-key m bc--mode-line-key l)
                   m))))
 
+(defvar-local bc--project-root-cache nil
+  "A cache for `breadcrumb--project-crumbs-1'.")
+
 (defun bc--project-crumbs-1 (bfn)
   "Helper for `breadcrumb-project-crumbs'.
 Given BFN, the `buffer-file-name', produce a a list of
 propertized crumbs."
   (cl-loop
-   with project = (project-current)
-   with root = (if project (project-root project) default-directory)
+   with root = (or bc--project-root-cache default-directory)
    with relname = (file-relative-name (or bfn default-directory)
                                       root)
    for (s . more) on (split-string relname "/")
@@ -389,7 +391,11 @@ propertized crumbs."
 (define-minor-mode breadcrumb-local-mode
   "Header lines with breadcrumbs."
   :init-value nil
-  (if bc-local-mode (add-to-list 'header-line-format '(:eval (bc--header-line)))
+  (if bc-local-mode
+      (progn
+          (let ((project (project-current)))
+              (setq bc--project-root-cache (if project (project-root project) nil)))
+        (add-to-list 'header-line-format '(:eval (bc--header-line))))
     (setq header-line-format (delete '(:eval (bc--header-line)) header-line-format))))
 
 (defun bc--turn-on-local-mode-on-behalf-of-global-mode ()
