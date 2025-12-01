@@ -346,11 +346,12 @@ to ROOT."
 
 (defun bc--project-crumbs-1 (bfn)
   "Helper for `breadcrumb-project-crumbs'.
-Given BFN, the `buffer-file-name', produce a a list of
+Given BFN, the `buffer-file-name', produce a list of
 propertized crumbs."
   (cl-loop
    with project = (project-current)
    with root = (if project (project-root project) default-directory)
+   with project-name = (if project (project-name project) (file-name-nondirectory (directory-file-name root)))
    with relname = (file-relative-name (or bfn default-directory)
                                       root)
    for (s . more) on (split-string relname "/")
@@ -360,7 +361,7 @@ propertized crumbs."
    finally
    (cl-return
     (if root
-        (cons (propertize (file-name-nondirectory (directory-file-name root))
+        (cons (propertize project-name
                           'bc-dont-shorten t
                           'face 'bc-project-base-face)
               retval)
