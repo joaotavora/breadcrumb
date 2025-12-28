@@ -147,6 +147,17 @@ percentage of `window-width'."
 (defface bc-project-leaf-face '((t (:inherit (mode-line-buffer-id))))
   "Face for the project leaf crumb in breadcrumb project path.")
 
+(defcustom bc-project-imenu-separator
+  (if window-system
+      (let ((colon-xpm (create-image
+                        (format
+                         "/* XPM */\nstatic char * colon_xpm[] = {\n\"7 23 2 1\",\n\"0 c %s\",\n\"1 c %s\",\n\"0000000\",\n\"0000000\",\n\"0000000\",\n\"0000000\",\n\"0000000\",\n\"0000000\",\n\"0000000\",\n\"0000000\",\n\"0011100\",\n\"0011100\",\n\"0011100\",\n\"0000000\",\n\"0000000\",\n\"0000000\",\n\"0011100\",\n\"0011100\",\n\"0011100\",\n\"0000000\",\n\"0000000\",\n\"0000000\",\n\"0000000\",\n\"0000000\",\n\"0000000\",\n};"
+                         (face-attribute 'mode-line :background nil t) (face-attribute 'bc-face :foreground nil t))
+                        'xpm t :scale 1 :ascent 'center)))
+        (concat " " (propertize " " 'display colon-xpm 'face 'breadcrumb-face 'face 'breadcrumb-face) " "))
+    " : ")
+  "Separator for project part and imenu part." :type 'string)
+
 
 ;;;; "ipath" management logic and imenu interoperation
 ;;
@@ -383,7 +394,7 @@ propertized crumbs."
   (let ((x (cl-remove-if
             #'seq-empty-p (mapcar #'funcall
                                   '(bc-project-crumbs bc-imenu-crumbs)))))
-    (mapconcat #'identity x (propertize " : " 'face 'bc-face))))
+    (mapconcat #'identity x (propertize bc-project-imenu-separator 'face 'bc-face))))
 
 ;;;###autoload
 (define-minor-mode breadcrumb-local-mode
@@ -425,7 +436,8 @@ propertized crumbs."
             for n in nodes
             for newpath = (cons (car n) ipath)
             for pos = (or (car (get-text-property 0 'breadcrumb-region (car n)))
-                          (and (number-or-marker-p (cdr n)) (cdr n)))
+                          (and (number-or-marker-p (cdr n)) (cdr n))
+                          (and (overlayp (cdr n)) (overlay-start (cdr n))))
             when pos do (push (cons (fmt (reverse newpath)) pos)
                               cands)
             do (dfs (cdr n) newpath))))
