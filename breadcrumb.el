@@ -147,16 +147,49 @@ percentage of `window-width'."
 (defface bc-project-leaf-face '((t (:inherit (mode-line-buffer-id))))
   "Face for the project leaf crumb in breadcrumb project path.")
 
-(defcustom bc-project-imenu-separator
-  (if window-system
-      (let ((colon-xpm (create-image
+(defcustom bc-header-line-height nil
+  "Height of breadcrumb header line, only works in a graphical environment.")
+
+(defvar bc--header-line-height-old nil
+  "Old value of `bc-header-line-height'.
+To avoid redundant computation of XPM body by caching the result, we
+need to reemember old height value.")
+
+(defvar bc--header-line-height-xpm-cache ""
+  "Cache of `bc-header-line-height' xpm body.
+To avoid redundant computation of dummy XPM, we need to cache the result")
+
+(defun bc--make-dummy-xpm-for-height ()
+  "Construct dummy xpm, use `bc-header-line-height' and cache."
+  ;; not graphical environment or illegal bc-header-line-height
+  (if (or (not window-system) (not bc-header-line-height) (<= bc-header-line-height 0))
+      ""
+    (if (eq bc-header-line-height bc--header-line-height-old)
+        ;; hit cache
+        bc--header-line-height-xpm-cache
+      (let ((result "")
+            (dummy-xpm (create-image
                         (format
-                         "/* XPM */\nstatic char * colon_xpm[] = {\n\"7 23 2 1\",\n\"0 c %s\",\n\"1 c %s\",\n\"0000000\",\n\"0000000\",\n\"0000000\",\n\"0000000\",\n\"0000000\",\n\"0000000\",\n\"0000000\",\n\"0000000\",\n\"0011100\",\n\"0011100\",\n\"0011100\",\n\"0000000\",\n\"0000000\",\n\"0000000\",\n\"0011100\",\n\"0011100\",\n\"0011100\",\n\"0000000\",\n\"0000000\",\n\"0000000\",\n\"0000000\",\n\"0000000\",\n\"0000000\",\n};"
-                         (face-attribute 'mode-line :background nil t) (face-attribute 'bc-face :foreground nil t))
+                         (concat "/* XPM */\n"
+                                 "static char * colon_xpm[] = {\n"
+                                 "\"1 %d 1 1\",\n"
+                                 "\"0 c %s\",\n"
+                                 (let ((result ""))
+                                   (dotimes (i bc-header-line-height)
+                                     (setq result (concat result "\"0\",\n")))
+
+                                   result)
+                                 "};")
+                         bc-header-line-height
+                         (face-attribute 'mode-line :background nil t))
                         'xpm t :scale 1 :ascent 'center)))
-        (concat " " (propertize " " 'display colon-xpm 'face 'breadcrumb-face 'face 'breadcrumb-face) " "))
-    " : ")
-  "Separator for project part and imenu part." :type 'string)
+        (setq result (propertize " " 'display dummy-xpm 'face 'bc-face))
+        ;; do cache
+        (setq bc--header-line-height-old bc-header-line-height
+              bc--header-line-height-xpm-cache result)
+
+        ;; return
+        result))))
 
 
 ;;;; "ipath" management logic and imenu interoperation
@@ -391,10 +424,11 @@ propertized crumbs."
 
 (defun bc--header-line ()
   "Helper for `breadcrumb-headerline-mode'."
-  (let ((x (cl-remove-if
+  (let* ((x (cl-remove-if
             #'seq-empty-p (mapcar #'funcall
-                                  '(bc-project-crumbs bc-imenu-crumbs)))))
-    (mapconcat #'identity x (propertize bc-project-imenu-separator 'face 'bc-face))))
+                                  '(bc-project-crumbs bc-imenu-crumbs))))
+         (dummy-xpm (bc--make-dummy-xpm-for-height)))
+    (concat (mapconcat #'identity x (propertize " : " 'face 'bc-face)) dummy-xpm)))
 
 ;;;###autoload
 (define-minor-mode breadcrumb-local-mode
