@@ -451,6 +451,77 @@ propertized crumbs."
       (push-mark)
       (bc--goto (selected-window) choice))))
 
+
+;;;; Opinionated mode line
+;;
+
+;;;###autoload
+(defcustom breadcrumb-opinionated-mlf
+  '("%e"
+    mode-line-modified
+    (:eval (bc-project-crumbs))
+    " "
+    (:propertize " " face default)
+    " "
+    (:eval (bc-imenu-crumbs))
+    " "
+    mode-line-format-right-align
+    (vc-mode vc-mode)
+    "  "
+    mode-line-modes
+    mode-line-misc-info
+    " %p%   %l:%c"
+    (:eval (format-time-string "  %H:%M")))
+  "A `mode-line-format' with breadcrumb project and imenu crumbs.
+Replaces `mode-line-buffer-identification' with the output of
+`breadcrumb-project-crumbs' and `breadcrumb-imenu-crumbs'."
+  :type '(repeat sexp))
+
+(defcustom bc-opinionated-diminished-modes
+  '(yas-minor-mode eldoc-mode company-mode whitespace-mode
+    which-key-mode)
+  "Minor modes whose lighters are hidden by `breadcrumb-opinionated-mode'."
+  :type '(repeat symbol))
+
+(defvar bc--saved-mlf)
+(defvar bc--saved-lighters nil)
+
+(defun bc--diminish (mode)
+  (when-let* ((cell (assq mode minor-mode-alist)))
+    (push (cons mode (cadr cell)) bc--saved-lighters)
+    (setcar (cdr cell) "")))
+
+;;;###autoload
+(define-minor-mode breadcrumb-opinionated-mode
+  "Global minor mode installing an opinionated breadcrumb mode line.
+On activation, saves the current `mode-line-format' default and replaces
+it with `breadcrumb-opinionated-mlf'."
+  :global t
+  (cond
+   (bc-opinionated-mode
+    (unless (boundp 'bc--saved-mlf) (setq bc--saved-mlf (default-value 'mode-line-format)))
+    (setq-default mode-line-format bc-opinionated-mlf)
+    (mapc #'bc--diminish bc-opinionated-diminished-modes)
+    (advice-add 'add-minor-mode :after
+                (lambda (toggle &rest _)
+                  (when (memq toggle bc-opinionated-diminished-modes)
+                    (bc--diminish toggle)))
+                '((name . bc--do-diminish-advice))))
+   (t
+    (setq-default mode-line-format bc--saved-mlf)
+    (advice-remove 'add-minor-mode 'bc--do-diminish-advice)
+    (dolist (saved bc--saved-lighters)
+      (when-let* ((cell (assq (car saved) minor-mode-alist)))
+        (setcar (cdr cell) (cdr saved))))
+    (setq bc--saved-lighters nil)
+    (makunbound 'bc--saved-mlf))))
+
+(advice-add 'mode--line-format-right-align :filter-return
+            (lambda (r)
+              (when bc-opinionated-mode
+                (propertize r 'face 'default)))
+            '((name . bc-opinionated-mlf)))
+
 (provide 'breadcrumb)
 ;;;###autoload (register-definition-prefixes "breadcrumb" '("breadcrumb-"))
 

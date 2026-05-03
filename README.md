@@ -9,7 +9,7 @@ Breadcrumbs are sequences of short strings indicating where you are in
 some big tree-like maze that is probably your code.  Hopefully the
 screenshot above clears it up.
 
-* `M-x breadcrumb-mode` is global mode.  Will try to turn itself on
+* `M-x breadcrumb-mode` is a global mode.  Will try to turn itself on
   conservatively and only if there's a project.
 
 * `M-x breadcrumb-local-mode` is a buffer-local minor mode, if you
@@ -38,10 +38,23 @@ and
 
 ```lisp
 (:eval (breadcrumb-project-crumbs))
-```    
+```
 
 in your settings of the `mode-line-format` or `header-line-format`
 variables.
+
+## An opinionated mode line
+
+If you had trouble understanding the previous section and just want to
+get breadcrumbs on the mode-line, you can call `M-x
+breadcrumb-opinionated-mode`.  Looks like this:
+
+![opinionated](./opinionated.png)
+
+Call it again to turn it off.  Also, you probably want to check how
+the variable `breadcrumb-opinionated-mlf` is built so you can
+adjust/customize it.  Or just steal ideas from it into your own
+`mode-line-format` `header-line-format` customizations.
 
 ## Tweaks
 
