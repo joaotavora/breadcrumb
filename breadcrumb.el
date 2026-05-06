@@ -518,8 +518,7 @@ it with `breadcrumb-opinionated-mlf'."
 
 (advice-add 'mode--line-format-right-align :filter-return
             (lambda (r)
-              (when bc-opinionated-mode
-                (propertize r 'face 'default)))
+              (if bc-opinionated-mode (propertize r 'face 'default) r))
             '((name . bc-opinionated-mlf)))
 
 (provide 'breadcrumb)
