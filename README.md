@@ -30,7 +30,7 @@ your `load-path` similar to `(add-to-list 'load-path "~/path/to/breadcrumb.el")`
 If you want some leet modeline you may also manually put the mode-line
 constructs
 
-```lisp
+ ```lisp
 (:eval (breadcrumb-imenu-crumbs))
 ```
 
