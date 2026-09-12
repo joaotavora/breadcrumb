@@ -16,7 +16,10 @@ screenshot above clears it up.
   don't want the default heuristics for turning it on everywhere.
    
 There's not much more to it.  Breadcrumb will try to query `imenu.el`
-and `project.el` for the best information.
+and `project.el` for the best information. Imenu entries with custom jump
+functions, such as PDF outline actions, are excluded from position breadcrumbs
+because their destinations need not be buffer positions. Project breadcrumbs
+remain available in these buffers.
 
 ## Installation
 
