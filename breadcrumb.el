@@ -191,8 +191,11 @@ node."
 These structures don't have a `breadcrumb-region' property on."
   (cl-labels ((dfs (n &optional ipath siblings)
                 (setq ipath (cons (car n) ipath))
-                (if (consp (cdr n))
-                    (mapc (lambda (n2) (dfs n2 ipath (cdr n))) (cdr n))
+                (cond
+                 ((imenu--subalist-p n)
+                  (mapc (lambda (n2) (dfs n2 ipath (cdr n))) (cdr n)))
+                 ((consp (cdr n)) nil)
+                 (t
                   ;; FIXME: we convert markers to points via the `+'
                   ;; down there.  But for siblings, no such conversion
                   ;; happens, they might still point to invalid
@@ -210,11 +213,12 @@ These structures don't have a `breadcrumb-region' property on."
                                        (number (cdr n))
                                        (marker (+ (cdr n) 0))
                                        (overlay (overlay-start (cdr n))))
-                                     ipath)])))))
+                                     ipath)]))))))
     (unless bc--ipath-plain-cache
       (mapc (lambda (i) (dfs i nil index-alist)) index-alist)
       (setq bc--ipath-plain-cache (cl-sort bc--ipath-plain-cache #'< :key #'car)))
-    (unless (< pos (car (aref bc--ipath-plain-cache 0)))
+    (when (and (length> bc--ipath-plain-cache 0)
+               (>= pos (car (aref bc--ipath-plain-cache 0))))
       (let ((res (bc--bisect bc--ipath-plain-cache pos :key #'car :from-end t)))
         (unless (zerop res) (reverse (cdr (elt bc--ipath-plain-cache (1- res)))))))))
 
