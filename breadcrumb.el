@@ -191,8 +191,15 @@ node."
 These structures don't have a `breadcrumb-region' property on."
   (cl-labels ((dfs (n &optional ipath siblings)
                 (setq ipath (cons (car n) ipath))
-                (if (consp (cdr n))
-                    (mapcan (lambda (n2) (dfs n2 ipath (cdr n))) (cdr n))
+                (cond
+                 ((imenu--subalist-p n)
+                  (mapcan (lambda (n2) (dfs n2 ipath (cdr n))) (cdr n)))
+                 ;; Empty submenus or "special elements" (NAME POS
+                 ;; FUNCTION ARGS...), whose POS isn't necessarily a
+                 ;; buffer position (github#51).  See docstring of
+                 ;; `imenu--index-alist'.
+                 ((listp (cdr n)) nil)
+                 (t
                   ;; FIXME: we convert markers to points via the `+'
                   ;; down there.  But for siblings, no such conversion
                   ;; happens, they might still point to invalid
@@ -208,13 +215,14 @@ These structures don't have a `breadcrumb-region' property on."
                            (number (cdr n))
                            (marker (+ (cdr n) 0))
                            (overlay (overlay-start (cdr n))))
-                         ipath)))))
+                         ipath))))))
     (unless bc--ipath-plain-cache
       (setq bc--ipath-plain-cache
             (cl-sort (vconcat (mapcan (lambda (i) (dfs i nil index-alist))
                                       index-alist))
                      #'< :key #'car)))
-    (unless (< pos (car (aref bc--ipath-plain-cache 0)))
+    (when (and (length> bc--ipath-plain-cache 0)
+               (>= pos (car (aref bc--ipath-plain-cache 0))))
       (let ((res (bc--bisect bc--ipath-plain-cache pos :key #'car :from-end t)))
         (unless (zerop res) (reverse (cdr (elt bc--ipath-plain-cache (1- res)))))))))
 
