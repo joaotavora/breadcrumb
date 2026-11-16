@@ -206,7 +206,9 @@ These structures don't have a `breadcrumb-region' property on."
                   ;; markers.  Not worth doing another tree traversal
                   ;; for that IMO, and siblings seems to be unused
                   ;; anyway (github#22)
-                  (put-text-property 0 1 'breadcrumb-siblings (cdr siblings) (car ipath))
+                  (unless (string-empty-p (car ipath)) ; github#36
+                    (put-text-property 0 1 'breadcrumb-siblings (cdr siblings)
+                                       (car ipath)))
                   (list (cons
                          ;; See github#17 and docstring of
                          ;; `imenu--index-alist' for the
