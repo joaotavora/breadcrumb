@@ -165,15 +165,22 @@ index, unless FROM-END is t.  KEY is as usual in other CL land."
     (if from-end (if key (search t key) (search t nil))
       (if key (search nil key) (search nil nil)))))
 
+(defun bc--region (name)
+  "Get (BEG . END) region of Imenu node NAME, or nil.
+Prefer the `imenu-region' property, fall back to the older
+`breadcrumb-region' (github#48)."
+  (or (get-text-property 0 'imenu-region name)
+      (get-text-property 0 'breadcrumb-region name)))
+
 (defun bc--ipath-rich (index-alist pos)
   "Compute ipath for rich `imenu--index-alist' structures.
-These structures have a `breadcrumb-region' property on every
-node."
+These structures have an `imenu-region' or `breadcrumb-region'
+property on every node."
   (cl-labels
       ((search (nodes &optional ipath)
          (cl-loop
           for n in nodes
-          for reg = (get-text-property 0 'breadcrumb-region (car n))
+          for reg = (bc--region (car n))
           when (<= (car reg) pos (cdr reg))
           return (search (cdr n) (cons
                                   (propertize (car n)
@@ -188,7 +195,7 @@ node."
 
 (defun bc--ipath-plain (index-alist pos)
   "Compute ipath for plain `imenu--index-alist' structures.
-These structures don't have a `breadcrumb-region' property on."
+These structures don't have region properties on."
   (cl-labels ((dfs (n &optional ipath siblings)
                 (setq ipath (cons (car n) ipath))
                 (cond
@@ -230,7 +237,7 @@ These structures don't have a `breadcrumb-region' property on."
 
 (defun bc-ipath (index-alist pos)
   "Get breadcrumb for position POS given INDEX-ALIST."
-  (if (get-text-property 0 'breadcrumb-region (caar index-alist))
+  (if (bc--region (caar index-alist))
       (bc--ipath-rich index-alist pos)
     (bc--ipath-plain index-alist pos)))
 
@@ -447,7 +454,7 @@ propertized crumbs."
            (cl-loop
             for n in nodes
             for newpath = (cons (car n) ipath)
-            for pos = (or (car (get-text-property 0 'breadcrumb-region (car n)))
+            for pos = (or (car (bc--region (car n)))
                           (and (number-or-marker-p (cdr n)) (cdr n)))
             when pos do (push (cons (fmt (reverse newpath)) pos)
                               cands)
