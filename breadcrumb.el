@@ -128,6 +128,40 @@ percentage of `window-width'."
 (defcustom bc-imenu-crumb-separator " > "
   "Separator for `breadcrumb-project-crumbs'." :type 'string)
 
+(defcustom bc-decorate-function nil
+  "Function to decorate each crumb, or nil.
+Called with two arguments, CRUMB and INFO.  Should return a string to
+display in place of CRUMB, for example CRUMB with an icon prepended.
+
+The returned string can be propertized with `keymap', `mouse-face' or
+`help-echo' to override the values normally in CRUMB.  To make clicks on
+a decoration do something else, give it its own `keymap', binding events
+like [mode-line mouse-3] and [header-line mouse-3].  To keep CRUMB's
+bindings as well, use `make-composed-keymap' with CRUMB's `keymap'
+property as fallback.
+
+INFO is a plist.  These keys are currently defined:
+
+`:type'      One of `project-base', `project-dir', `project-file',
+             `buffer', `imenu-crumb' or `imenu-leaf'.
+`:file'      For project crumbs, the absolute file or directory name.
+`:kind'      For Imenu crumbs, the kind of the construct, a string
+             like \"Function\" or \"Class\".  Only if the Imenu
+             backend provides it, as Eglot does.
+
+Decorations that make crumbs wider are the first thing to go when
+space is short.  They're shown only if no crumb had to be shortened
+to fit `breadcrumb-imenu-max-length' or `breadcrumb-project-max-length',
+and then only while they fit, rightmost crumbs first.  Decorations
+that don't widen crumbs, like ones adding only a `keymap', are always
+kept.
+
+See `breadcrumb-decorate-with-nerd-font' for an example.  If this
+is nil, `breadcrumb-opinionated-mode' uses that function."
+  :type '(choice (const :tag "No decoration" nil)
+                 (const :tag "Nerd Font icons" bc-decorate-with-nerd-font)
+                 function))
+
 (defface bc-face '((t (:inherit shadow)))
   "Base face for all breadcrumb things.")
 
@@ -303,6 +337,9 @@ These structures don't have region properties on."
      p 'mouse-face 'header-line-highlight
      'face (if more 'bc-imenu-crumbs-face 'bc-imenu-leaf-face)
      'bc-dont-shorten (null more)
+     'bc-crumb-info (list :type (if more 'imenu-crumb 'imenu-leaf)
+                          :kind (or (get-text-property 0 'imenu-kind p)
+                                    (get-text-property 0 'breadcrumb-kind p)))
      'help-echo (format "mouse-1: Go places near %s" p)
      'keymap
      (let ((m (make-sparse-keymap)))
@@ -329,19 +366,69 @@ These structures don't have region properties on."
 Rightmost members of CRUMBS are summarized last.  Members with a non-nil
 `breadcrumb-dont-shorten' property are never truncated.  Aim for a
 return string that is at most CUTOFF characters long.  Join the crumbs
-with SEPARATOR."
-  (let ((rcrumbs
-         (cl-loop
-          for available = (- cutoff used)
-          for (c . more) on (reverse crumbs)
-          for seplen = (if more (length separator) 0)
-          for shorten-p = (unless (or (string-empty-p c)
-                                      (get-text-property 0 'bc-dont-shorten c))
-                            (> (+ (length c) seplen) available))
-          for toadd = (if shorten-p (substring c 0 1) c)
-          sum (+ (length toadd) seplen) into used
-          collect toadd)))
-    (string-join (reverse rcrumbs) separator)))
+with SEPARATOR.
+
+Then decorate the crumbs with `breadcrumb--decorate'.  Decorations
+that widen crumbs are the first thing to go when space is short:
+they're only added if no crumb was truncated, and only while they fit
+in CUTOFF.  See `breadcrumb--decorate-crumbs'."
+  (cl-loop
+   for available = (- cutoff used)
+   for (c . more) on (reverse crumbs)
+   for seplen = (if more (length separator) 0)
+   for shorten-p = (unless (or (string-empty-p c)
+                               (get-text-property 0 'bc-dont-shorten c))
+                     (> (+ (length c) seplen) available))
+   for toadd = (if shorten-p (substring c 0 1) c)
+   sum (+ (length toadd) seplen) into used
+   count shorten-p into nshortened
+   collect toadd into rcrumbs
+   finally return
+   (string-join (reverse (bc--decorate-crumbs
+                          rcrumbs
+                          (if (zerop nshortened) (max 0 (- cutoff used)) 0)))
+                separator)))
+
+(defun bc--decorate-crumbs (rcrumbs budget)
+  "Decorate RCRUMBS, a list of crumbs in right-to-left order.
+BUDGET is how many characters decorations may add in total.  Spend it
+on the rightmost crumbs first.  At the first decoration that doesn't
+fit, stop adding characters, so that only a rightmost run of crumbs
+gets wider.  Decorations that add no characters are always kept.
+Return the decorated list, in the same order."
+  (cl-loop for c in rcrumbs
+           for d = (bc--decorate c)
+           for extra = (- (length d) (length c))
+           if (> extra budget) do (setq d c budget 0)
+           else do (cl-decf budget (max extra 0))
+           collect d))
+
+(defvar bc-opinionated-mode)
+
+(defun bc--decorate (crumb)
+  "Maybe decorate CRUMB with `breadcrumb-decorate-function'.
+If that is nil and `breadcrumb-opinionated-mode' is on, use
+`breadcrumb-decorate-with-nerd-font'."
+  (let ((info (get-text-property 0 'bc-crumb-info crumb))
+        (fn (or bc-decorate-function
+                (and bc-opinionated-mode #'bc-decorate-with-nerd-font))))
+    (if (not (and fn info))
+        crumb
+      (let ((d (copy-sequence (funcall fn crumb info))))
+        ;; Make the decorations as clickable as the crumb itself,
+        ;; unless FN made them clickable some other way.
+        (dolist (p '(keymap mouse-face help-echo) d)
+          (when-let* ((v (get-text-property 0 p crumb)))
+            (bc--put-where-absent p v d)))))))
+
+(defun bc--put-where-absent (prop value string)
+  "Set PROP to VALUE in the parts of STRING where PROP is nil."
+  (let ((beg 0) (len (length string)) end)
+    (while (< beg len)
+      (setq end (next-single-property-change beg prop string len))
+      (unless (get-text-property beg prop string)
+        (put-text-property beg end prop value string))
+      (setq beg end))))
 
 (defun bc--format-project-node (p more root path)
   "Helper for `bc--project-crumbs-1'.
@@ -355,6 +442,8 @@ to ROOT."
     (propertize p 'face
                 (if more 'bc-project-crumbs-face 'bc-project-leaf-face)
                 'bc-dont-shorten (null more)
+                'bc-crumb-info (list :type (if more 'project-dir 'project-file)
+                                     :file (expand-file-name path root))
                 'mouse-face 'header-line-highlight
                 'help-echo (format "mouse-1: Go places near %s%s" root path)
                 'keymap
@@ -392,6 +481,7 @@ propertized crumbs."
     (if root
         (cons (propertize pname
                           'bc-dont-shorten t
+                          'bc-crumb-info (list :type 'project-base :file root)
                           'face 'bc-project-base-face)
               retval)
       retval))))
@@ -403,7 +493,8 @@ propertized crumbs."
    (if buffer-file-name (bc--project-crumbs-1 buffer-file-name)
      (list (propertize (buffer-name)
                        'face 'bc-project-leaf-face
-                       'bc-dont-shorten t)))
+                       'bc-dont-shorten t
+                       'bc-crumb-info '(:type buffer))))
    (bc--length bc-project-max-length)
    (propertize bc-project-crumb-separator
                'face 'bc-project-crumbs-face)))
@@ -476,6 +567,7 @@ propertized crumbs."
   '((:eval (bc--fancy-stub t))
     "%e"
     mode-line-modified
+    " "
     (:eval (bc-project-crumbs))
     (:eval (bc--fancy-stub nil))
     (:propertize " " face default)
@@ -523,9 +615,23 @@ Replaces `mode-line-buffer-identification' with the output of
   "Cache of `bc--fancy-stub' results, keyed by (CHAR . SELECTED).
 Each value is (BG . STRING), recomputed when BG no longer matches.")
 
+(defvar bc--displayable-cache (make-hash-table :test 'equal)
+  "Cache of `bc--displayable-p' results, keyed by (CHAR . FONT).")
+
+(defun bc--displayable-p (char)
+  "Like `char-displayable-p' for CHAR, but cached per frame font.
+On text terminals Emacs can't know if the terminal's font has CHAR,
+so this only checks the terminal's coding system and is often
+optimistic."
+  (let* ((key (cons char (frame-parameter nil 'font)))
+         (v (gethash key bc--displayable-cache 'unknown)))
+    (if (eq v 'unknown)
+        (puthash key (and (char-displayable-p char) t) bc--displayable-cache)
+      v)))
+
 (defun bc--fancy-stub (opening)
   (let ((char (if opening (car bc-fancy-stub-chars) (cdr bc-fancy-stub-chars))))
-    (if (not (char-displayable-p char))
+    (if (not (bc--displayable-p char))
         ""
       (let* ((selected (mode-line-window-selected-p))
              (key (cons char selected))
@@ -543,11 +649,111 @@ Each value is (BG . STRING), recomputed when BG no longer matches.")
     (when (cl-plusp (length retval))
       (concat (bc--fancy-stub t) retval (bc--fancy-stub nil)))))
 
+(defcustom bc-nerd-font-icons
+  '(;; Project crumbs, by `:type'.  No `project-dir' entry: a folder
+    ;; icon on every directory adds only noise.  `buffer' (file-less
+    ;; buffers) has no CHAR: a file icon would mislead, but the
+    ;; `nerd-icons' icon for the major mode doesn't.
+    (project-base ?\uea62 nil)                          ; repo
+    (project-file ?\uea7b nil)                          ; file
+    (buffer nil nil)                                    ; only with nerd-icons
+    ;; Imenu crumbs, by `:kind' (LSP SymbolKind names).  Faces
+    ;; follow the `nerd-icons-corfu' package.  Comments name the
+    ;; nf-cod- glyphs.
+    ("File" ?\ueb60 font-lock-string-face)              ; symbol_file
+    ("Module" ?\uea8b font-lock-preprocessor-face)      ; symbol_namespace
+    ("Namespace" ?\uea8b font-lock-preprocessor-face)   ; symbol_namespace
+    ("Package" ?\uea8b font-lock-preprocessor-face)     ; symbol_namespace
+    ("Object" ?\uea8b font-lock-preprocessor-face)      ; symbol_namespace
+    ("Class" ?\ueb5b font-lock-type-face)               ; symbol_class
+    ("Interface" ?\ueb61 font-lock-type-face)           ; symbol_interface
+    ("Struct" ?\uea91 font-lock-type-face)              ; symbol_structure
+    ("TypeParameter" ?\uea92 font-lock-type-face)       ; symbol_parameter
+    ("Array" ?\uea8a font-lock-type-face)               ; symbol_array
+    ("Method" ?\uea8c font-lock-function-name-face)     ; symbol_method
+    ("Function" ?\uea8c font-lock-function-name-face)   ; symbol_method
+    ("Constructor" ?\uea8c font-lock-function-name-face) ; symbol_method
+    ("Property" ?\ueb65 font-lock-variable-name-face)   ; symbol_property
+    ("Field" ?\ueb5f font-lock-variable-name-face)      ; symbol_field
+    ("Variable" ?\uea88 font-lock-variable-name-face)   ; symbol_variable
+    ("Constant" ?\ueb5d font-lock-constant-face)        ; symbol_constant
+    ("Enum" ?\uea95 font-lock-builtin-face)             ; symbol_enum
+    ("EnumMember" ?\ueb5e font-lock-builtin-face)       ; symbol_enum_member
+    ("Number" ?\uea90 font-lock-builtin-face)           ; symbol_numeric
+    ("Boolean" ?\uea8f font-lock-builtin-face)          ; symbol_boolean
+    ("String" ?\ueb8d font-lock-string-face)            ; symbol_string
+    ("Key" ?\uea93 font-lock-keyword-face)              ; symbol_key
+    ("Event" ?\uea86 font-lock-warning-face)            ; symbol_event
+    ("Operator" ?\ueb64 font-lock-comment-delimiter-face)) ; symbol_operator
+  "Alist of (KEY CHAR FACE) for `breadcrumb-decorate-with-nerd-font'.
+KEY is a crumb `:type' symbol for project crumbs, or a `:kind'
+string for Imenu crumbs (see `breadcrumb-decorate-function').
+CHAR is a Nerd Font glyph, by default one of the Codicons.  FACE
+colors it, or nil to use the crumb's face.  Crumbs with no entry get
+no icon.  Set to nil to disable icons in `breadcrumb-opinionated-mode'.
+
+If the `nerd-icons' package is installed, file, directory and `buffer'
+crumbs with an entry get its colored icons for the file type or major
+mode instead.  A nil CHAR means an icon only in that case."
+  :type '(alist
+          :key-type (choice symbol string)
+          :value-type (list (choice (const :tag "Only with nerd-icons" nil)
+                                    character)
+                            (choice (const :tag "Crumb's face" nil) face))))
+
+(declare-function nerd-icons-icon-for-file "ext:nerd-icons")
+(declare-function nerd-icons-icon-for-dir "ext:nerd-icons")
+(declare-function nerd-icons-icon-for-mode "ext:nerd-icons")
+
+(defun bc-decorate-with-nerd-font (crumb info)
+  "Prepend a Nerd Font icon to CRUMB according to INFO.
+Pick the icon from `breadcrumb-nerd-font-icons' by INFO's `:kind' for
+Imenu crumbs and by its `:type' for the others.  If the `nerd-icons'
+package is installed, use its colored icons for the file type of file
+and directory crumbs, and for the major mode of file-less buffers.
+Return CRUMB unchanged if there's no icon or if the frame can't
+display it.
+
+This is a value for `breadcrumb-decorate-function', and an example
+for writing others."
+  (let* ((type (plist-get info :type))
+         (entry (cdr (assoc (if (memq type '(imenu-crumb imenu-leaf))
+                                (plist-get info :kind)
+                              type)
+                            bc-nerd-font-icons)))
+         (icon (and entry
+                    (bc--nerd-font-icon type (plist-get info :file) entry
+                                        (get-text-property 0 'face crumb)))))
+    (if (not (and (stringp icon) (not (string-empty-p icon))
+                  (bc--displayable-p (aref icon 0))))
+        crumb
+      ;; Follow ICON with a space in ICON's face.  Some terminals (st,
+      ;; for one) clip a wide glyph to its cell unless the next cell
+      ;; is blank and has the same attributes.
+      (concat icon (propertize " " 'face (get-text-property 0 'face icon))
+              crumb))))
+
+(defun bc--nerd-font-icon (type file entry crumb-face)
+  "Icon for a crumb of TYPE and FILE, given its ENTRY.
+ENTRY is (CHAR FACE), from `breadcrumb-nerd-font-icons'.  CRUMB-FACE
+is the crumb's face."
+  (pcase-let ((`(,char ,face) entry))
+    (cond ((and (eq type 'project-file) (fboundp 'nerd-icons-icon-for-file))
+           (nerd-icons-icon-for-file file))
+          ((and (eq type 'project-dir) (fboundp 'nerd-icons-icon-for-dir))
+           (nerd-icons-icon-for-dir file))
+          ((and (eq type 'buffer) (fboundp 'nerd-icons-icon-for-mode))
+           (nerd-icons-icon-for-mode major-mode))
+          (char (propertize (string char)
+                            'face (delq nil (list face crumb-face)))))))
+
 ;;;###autoload
 (define-minor-mode breadcrumb-opinionated-mode
   "Global minor mode installing an opinionated breadcrumb mode line.
 On activation, saves the current `mode-line-format' default and replaces
-it with `breadcrumb-opinionated-mlf'."
+it with `breadcrumb-opinionated-mlf'.  Unless
+`breadcrumb-decorate-function' is set, also decorates crumbs with
+Nerd Font icons, via `breadcrumb-decorate-with-nerd-font'."
   :global t
   (cond
    (bc-opinionated-mode
