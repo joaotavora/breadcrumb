@@ -227,14 +227,29 @@ property on every node."
 (defvar-local bc--ipath-plain-cache nil
   "A cache for `breadcrumb--ipath-plain'.")
 
+(defun bc--mark-start (name entries)
+  "Record on NAME the smallest position in ENTRIES, and return ENTRIES.
+ENTRIES are (POS . IPATH) entries of `breadcrumb--ipath-plain-cache'
+for Imenu node NAME, or for its descendants.  See
+`breadcrumb--node-start'."
+  (when (and entries (not (string-empty-p name)))
+    (put-text-property 0 (length name) 'bc--start
+                       (cl-loop for (pos . _) in entries minimize pos)
+                       name))
+  entries)
+
 (defun bc--ipath-plain (index-alist pos)
   "Compute ipath for plain `imenu--index-alist' structures.
 These structures don't have region properties on."
   (cl-labels ((dfs (n &optional ipath siblings)
-                (setq ipath (cons (car n) ipath))
+                ;; Copy names, as `bc--mark-start' and the siblings
+                ;; property below modify them.
+                (setq ipath (cons (copy-sequence (car n)) ipath))
                 (cond
                  ((imenu--subalist-p n)
-                  (mapcan (lambda (n2) (dfs n2 ipath (cdr n))) (cdr n)))
+                  (bc--mark-start
+                   (car ipath)
+                   (mapcan (lambda (n2) (dfs n2 ipath (cdr n))) (cdr n))))
                  ;; Empty submenus or "special elements" (NAME POS
                  ;; FUNCTION ARGS...), whose POS isn't necessarily a
                  ;; buffer position (github#51).  See docstring of
@@ -250,15 +265,17 @@ These structures don't have region properties on."
                   (unless (string-empty-p (car ipath)) ; github#36
                     (put-text-property 0 1 'breadcrumb-siblings (cdr siblings)
                                        (car ipath)))
-                  (list (cons
-                         ;; See github#17 and docstring of
-                         ;; `imenu--index-alist' for the
-                         ;; "overlay" edge case.
-                         (cl-etypecase (cdr n)
-                           (number (cdr n))
-                           (marker (+ (cdr n) 0))
-                           (overlay (overlay-start (cdr n))))
-                         ipath))))))
+                  (bc--mark-start
+                   (car ipath)
+                   (list (cons
+                          ;; See github#17 and docstring of
+                          ;; `imenu--index-alist' for the
+                          ;; "overlay" edge case.
+                          (cl-etypecase (cdr n)
+                            (number (cdr n))
+                            (marker (+ (cdr n) 0))
+                            (overlay (overlay-start (cdr n))))
+                          ipath)))))))
     (unless bc--ipath-plain-cache
       (setq bc--ipath-plain-cache
             (cl-sort (vconcat (mapcan (lambda (i) (dfs i nil index-alist))
@@ -324,28 +341,41 @@ These structures don't have region properties on."
   (cond ((floatp len) (* (window-width) len))
         (t len)))
 
-(defun bc--format-ipath-node (p more)
-  (let* ((l (lambda (&rest _event)
-              (interactive)
-              ;; TODO: This is a bit inadequate if the user is
-              ;; clicking the mode or header lines, but 'event' seems
-              ;; to be missing in these cases.  We would to
-              ;; conveniently visit places near the node `p' via the
-              ;; mouse
-              (breadcrumb-jump))))
-    (propertize
-     p 'mouse-face 'header-line-highlight
+(defun bc--click-props (what fn)
+  "Text properties making a crumb call FN when clicked.
+FN is called with no arguments, in the window whose mode line or header
+line was clicked.  WHAT describes the click's destination."
+  (let ((m (make-sparse-keymap))
+        (cmd (lambda (event)
+               (interactive "e")
+               (select-window (posn-window (event-start event)))
+               (funcall fn))))
+    (define-key m bc--header-line-key cmd)
+    (define-key m bc--mode-line-key cmd)
+    (list 'mouse-face 'header-line-highlight
+          'help-echo (format "mouse-1: Go to %s" what)
+          'keymap m)))
+
+(defun bc--node-start (name)
+  "Get start position of Imenu node NAME, or nil."
+  (or (car (bc--region name))
+      (get-text-property 0 'bc--start name)))
+
+(defun bc--format-ipath-node (p more path)
+  "Format Imenu crumb P, given MORE crumbs after it.
+PATH is the list of crumbs from the outermost one down to P."
+  (let ((start (bc--node-start p)))
+    (apply
+     #'propertize
+     p
      'face (if more 'bc-imenu-crumbs-face 'bc-imenu-leaf-face)
      'bc-dont-shorten (null more)
      'bc-crumb-info (list :type (if more 'imenu-crumb 'imenu-leaf)
                           :kind (or (get-text-property 0 'imenu-kind p)
                                     (get-text-property 0 'breadcrumb-kind p)))
-     'help-echo (format "mouse-1: Go places near %s" p)
-     'keymap
-     (let ((m (make-sparse-keymap)))
-       (define-key m bc--header-line-key l)
-       (define-key m bc--mode-line-key l)
-       m))))
+     (and start
+          (bc--click-props (string-join path bc-imenu-crumb-separator)
+                           (lambda () (bc--goto (selected-window) start)))))))
 
 ;;;###autoload
 (defun breadcrumb-imenu-crumbs ()
@@ -354,8 +384,9 @@ These structures don't have region properties on."
     (when (cl-some #'identity alist)
       (bc--summarize
        (cl-loop
-        for (p . more) on (bc-ipath alist (point))
-        collect (bc--format-ipath-node (string-trim p) more))
+        for (p . more) on (mapcar #'string-trim (bc-ipath alist (point)))
+        collect (substring-no-properties p) into path
+        collect (bc--format-ipath-node p more path))
        (bc--length bc-imenu-max-length)
        (propertize bc-imenu-crumb-separator
                    'face 'bc-face)))))
@@ -435,22 +466,14 @@ If that is nil and `breadcrumb-opinionated-mode' is on, use
 Formats path crumb P given optional MORE nodes.  ROOT is the
 default directory of P's project.  PATH is the path of P relative
 to ROOT."
-  (let ((l (lambda (&rest _event)
-             (interactive)
-             ;; TODO: See similar TODO in `bc--format-ipath-node'.
-             (find-file (file-name-directory (expand-file-name path root))))))
-    (propertize p 'face
-                (if more 'bc-project-crumbs-face 'bc-project-leaf-face)
-                'bc-dont-shorten (null more)
-                'bc-crumb-info (list :type (if more 'project-dir 'project-file)
-                                     :file (expand-file-name path root))
-                'mouse-face 'header-line-highlight
-                'help-echo (format "mouse-1: Go places near %s%s" root path)
-                'keymap
-                (let ((m (make-sparse-keymap)))
-                  (define-key m bc--header-line-key l)
-                  (define-key m bc--mode-line-key l)
-                  m))))
+  (let ((file (expand-file-name path root)))
+    (apply #'propertize p
+           'face (if more 'bc-project-crumbs-face 'bc-project-leaf-face)
+           'bc-dont-shorten (null more)
+           'bc-crumb-info (list :type (if more 'project-dir 'project-file)
+                                :file file)
+           (bc--click-props (abbreviate-file-name file)
+                            (lambda () (find-file file))))))
 
 (defvar-local bc--cached-project nil
   ;; This is a fairly "dumb" cache, but hopefully good enough for most
@@ -479,10 +502,12 @@ propertized crumbs."
    finally
    (cl-return
     (if root
-        (cons (propertize pname
-                          'bc-dont-shorten t
-                          'bc-crumb-info (list :type 'project-base :file root)
-                          'face 'bc-project-base-face)
+        (cons (apply #'propertize pname
+                     'bc-dont-shorten t
+                     'bc-crumb-info (list :type 'project-base :file root)
+                     'face 'bc-project-base-face
+                     (bc--click-props (abbreviate-file-name root)
+                                      (lambda () (find-file root))))
               retval)
       retval))))
 
