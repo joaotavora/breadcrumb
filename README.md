@@ -14,6 +14,9 @@ screenshot above clears it up.
 
 * `M-x breadcrumb-local-mode` is a buffer-local minor mode, if you
   don't want the default heuristics for turning it on everywhere.
+
+* `M-x breadcrumb-opinionated-mode` is if you're feeling
+  [naughty](#an-opinionated-mode-line).
    
 There's not much more to it.  Breadcrumb will try to query `imenu.el`
 and `project.el` for the best information.
