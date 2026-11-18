@@ -604,8 +604,11 @@ propertized crumbs."
     " "
     mode-line-modes
     mode-line-misc-info
-    " %p%   %l:%c"
-    (:eval (format-time-string "  %H:%M"))
+    " %p%  "
+    (:propertize "\uf05b " face font-lock-keyword-face) ; crosshairs
+    "%l:%c "
+    (:propertize "\uf017 " face font-lock-type-face)    ; clock
+    (:eval (format-time-string "%H:%M"))
     (:eval (bc--fancy-stub nil))
     (:propertize " " face default))
   "A `mode-line-format' with breadcrumb project and imenu crumbs.
